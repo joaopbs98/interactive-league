@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  images: {
+    domains: ["cdn.sofifa.net"],
+  },
 };
 
 export default nextConfig;
