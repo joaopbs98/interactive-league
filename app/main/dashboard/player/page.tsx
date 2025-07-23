@@ -335,7 +335,7 @@ export default function PlayerSearchPage() {
           </div>
 
           <Tabs defaultValue="Attacking" className="space-y-4">
-            <TabsList>
+            <TabsList className="w-full">
               {Object.keys(statCategories).map((cat) => (
                 <TabsTrigger key={cat} value={cat} className="capitalize">
                   {cat}
