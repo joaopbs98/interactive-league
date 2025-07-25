@@ -1,37 +1,52 @@
-// File: supabase/functions/createLeague/index.ts
-import { serve } from "https://deno.land/[email protected]/http/server.ts";
+// index.ts
+import { serve } from "https://deno.land/x/sift@0.6.0/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { handleCors, isPreflight } from "../_shared/cors.ts";
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-serve(async (req: { headers: { get: (arg0: string) => string; }; json: () => { name: string; invites: string[]; } | PromiseLike<{ name: string; invites: string[]; }>; }) => {
+serve(async (req: Request) => {
+  // Handle preflight CORS request
+  if (isPreflight(req)) {
+    return handleCors(req);
+  }
+
   try {
-    // 1. Autenticação
-    const jwt = req.headers.get("Authorization")?.replace("Bearer ", "");
-    if (!jwt) throw new Error("Unauthorized");
-    const { name, invites }: { name: string; invites: string[] } =
-      await req.json();
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.replace("Bearer ", "");
+    if (!token) {
+      return handleCors(
+        req,
+        new Response(JSON.stringify({ error: "Missing authorization header" }), {
+          status: 401,
+        })
+      );
+    }
 
-    // 2. Obter utilizador
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser(jwt);
-    if (authErr || !user) throw authErr || new Error("Invalid user");
+    const { name, teamName, teamAcronym, logoUrl, invites } = await req.json();
 
-    // 3. Criar liga
+    const { data, error: authErr } = await supabase.auth.getUser(token);
+if (authErr || !data?.user) throw authErr || new Error("Invalid user");
+const user = data.user;
+
+
+    const leagueName = name && name.trim() !== "" ? name : "My League";
     const { data: league, error: leagueErr } = await supabase
       .from("leagues")
-      .insert([{ name, season: 1, commissioner_user_id: user.id }])
+      .insert([
+        {
+          name: leagueName,
+          season: 1,
+          commissioner_user_id: user.id,
+        },
+      ])
       .select("id")
       .single();
     if (leagueErr) throw leagueErr;
 
-    // 4. Criar equipa do host
-    const initialBudget = 250_000_000;
-    const teamName = `${user.user_metadata?.full_name || user.email}'s Team`;
+    const initialBudget = 280_000_000;
     const { data: team, error: teamErr } = await supabase
       .from("teams")
       .insert([
@@ -39,6 +54,8 @@ serve(async (req: { headers: { get: (arg0: string) => string; }; json: () => { n
           league_id: league.id,
           user_id: user.id,
           name: teamName,
+          acronym: teamAcronym,
+          logo_url: logoUrl,
           budget: initialBudget,
         },
       ])
@@ -46,51 +63,55 @@ serve(async (req: { headers: { get: (arg0: string) => string; }; json: () => { n
       .single();
     if (teamErr) throw teamErr;
 
-    // 5. Gerar plantel inicial (14 jogadores, pode adaptar para 18)
     const positions = [
-      "GK",
-      "DEF",
-      "DEF",
-      "DEF",
-      "DEF",
-      "DEF",
-      "MID",
-      "MID",
-      "MID",
-      "MID",
-      "ATT",
-      "ATT",
-      "ATT",
-      "ATT",
+      "GK", "GK",
+      "DEF", "DEF", "DEF", "DEF", "DEF", "DEF",
+      "MID", "MID", "MID", "MID", "MID", "MID",
+      "ATT", "ATT", "ATT", "ATT",
     ];
-    const squadInserts = positions.map((pos, idx) => ({
+    const players = positions.map((pos, index) => ({
       player_id: crypto.randomUUID(),
-      name: `Player ${idx + 1}`,
+      name: `Player ${index + 1}`,
       position: pos,
       rating: Math.floor(Math.random() * 11) + 50,
       age: Math.floor(Math.random() * 10) + 18,
       current_team_id: team.id,
     }));
-    const { error: playersErr } = await supabase
-      .from("player")
-      .insert(squadInserts);
+    const { error: playersErr } = await supabase.from("player").insert(players);
     if (playersErr) throw playersErr;
 
-    // 6. Criar convites para emails e enviar convite Supabase
-    for (const email of (invites ?? []).filter(Boolean)) {
-      await supabase
-        .from("league_invites")
-        .insert([{ league_id: league.id, email }]);
-      await supabase.auth.admin.inviteUserByEmail(email);
+    if (Array.isArray(invites)) {
+      for (const email of invites.filter((e: string) => e && e.trim() !== "")) {
+        await supabase.from("league_invites").insert([
+          {
+            league_id: league.id,
+            email,
+          },
+        ]);
+        await supabase.auth.admin.inviteUserByEmail(email.trim());
+      }
     }
 
-    return new Response(
-      JSON.stringify({ leagueId: league.id, teamId: team.id }),
-      { status: 200 }
+    const result = {
+      leagueId: league.id,
+      teamId: team.id,
+    };
+
+    return handleCors(
+      req,
+      new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
     );
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-    });
+    console.error("createLeague error:", err);
+    return handleCors(
+      req,
+      new Response(JSON.stringify({ error: err.message || err.toString() }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
   }
 });
