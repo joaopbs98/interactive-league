@@ -2,7 +2,9 @@
 
 import React, { useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@/utils/supabase/client";
+
+const supabase = createClient();
 
 const CreateLeaguePage: React.FC = () => {
   const router = useRouter();
@@ -23,25 +25,33 @@ const CreateLeaguePage: React.FC = () => {
   const handleCreateLeague = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMsg("");
+
     if (!teamName || !teamAcronym) {
       setErrorMsg("Team name and acronym are required");
+
       return;
     }
 
     setLoading(true);
     try {
-      // ⬇️ Debug opcional para ver se o token existe
-      const session = await supabase.auth.getSession();
-      console.log("JWT", session.data.session?.access_token);
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
+      if (sessionError || !session) {
+        throw new Error("No auth token found");
+      }
+
+      const token = session.access_token;
+
+      // Upload logo if needed
       let logoUrl: string | null = null;
       if (logoFile) {
         const fileExt = logoFile.name.split(".").pop();
         const fileName = `${teamName
-          .trim()
           .toLowerCase()
           .replace(/\s+/g, "-")}-${Date.now()}.${fileExt}`;
-
         const { error: uploadError } = await supabase.storage
           .from("team-logos")
           .upload(fileName, logoFile);
@@ -54,37 +64,26 @@ const CreateLeaguePage: React.FC = () => {
         logoUrl = data.publicUrl;
       }
 
-      let invites: string[] = [];
-      if (inviteEmails.trim() !== "") {
-        invites = inviteEmails
-          .split(",")
-          .map((email) => email.trim())
-          .filter((em) => !!em);
-      }
+      const invites = inviteEmails
+        .split(",")
+        .map((email) => email.trim())
+        .filter((e) => e !== "");
 
-      const token = session.data.session?.access_token;
-
-      if (!token) throw new Error("No auth token found");
-
-      const { data: result, error } = await supabase.functions.invoke(
-        "createLeague",
-        {
-          body: {
-            name: leagueName,
-            teamName: teamName,
-            teamAcronym: teamAcronym,
-            logoUrl: logoUrl,
-            invites: invites,
-          },
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("createLeague", {
+        body: {
+          name: leagueName,
+          teamName,
+          teamAcronym,
+          logoUrl,
+          invites,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       if (error) throw error;
 
-      // ✅ Success
       router.push("/main/dashboard");
     } catch (err: any) {
       console.error("CreateLeague error", err);

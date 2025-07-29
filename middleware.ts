@@ -1,7 +1,16 @@
-import { updateSession } from "@/utils/supabase/middleware"; // wherever your `updateSession` is
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export const middleware = updateSession;
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req, res });
+
+  await supabase.auth.getSession(); 
+
+  return res;
+}
 
 export const config = {
-  matcher: ["/((?!_next|favicon.ico|.*\\.\\w+).*)"], // protect all routes except static assets
+  matcher: ["/main/:path*", "/createleague"], 
 };
