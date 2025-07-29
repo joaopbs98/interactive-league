@@ -8,24 +8,31 @@ const supabase = createClient(
 );
 
 serve(async (req: Request) => {
+  // Handle CORS preflight request
   if (isPreflight(req)) {
     return handleCors(req);
   }
 
+  let response: Response;
   try {
+    // Auth
     const authHeader = req.headers.get("Authorization");
     const token = authHeader?.replace("Bearer ", "");
     if (!token) {
-      return handleCors(req, new Response(JSON.stringify({ error: "Missing token" }), { status: 401 }));
+      response = new Response(JSON.stringify({ error: "Missing token" }), { status: 401 });
+      return handleCors(req, response);
     }
 
     const { name, teamName, teamAcronym, logoUrl, invites } = await req.json();
 
+    // Get user
     const { data, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !data?.user) throw authErr || new Error("Invalid user");
+    if (authErr || !data?.user) {
+      throw authErr || new Error("Invalid user");
+    }
     const user = data.user;
 
-    // 👇 Insere liga
+    // Create League
     const { data: league, error: leagueErr } = await supabase
       .from("leagues")
       .insert([{ name: name ?? "My League", season: 1, commissioner_user_id: user.id }])
@@ -33,7 +40,7 @@ serve(async (req: Request) => {
       .single();
     if (leagueErr) throw leagueErr;
 
-    // 👇 Insere equipa
+    // Create Team
     const { data: team, error: teamErr } = await supabase
       .from("teams")
       .insert([{ league_id: league.id, user_id: user.id, name: teamName, acronym: teamAcronym, logo_url: logoUrl, budget: 280_000_000 }])
@@ -41,7 +48,7 @@ serve(async (req: Request) => {
       .single();
     if (teamErr) throw teamErr;
 
-    // 👇 Insere jogadores
+    // Create Players
     const positions = ["GK", "GK", "DEF", "DEF", "DEF", "DEF", "DEF", "DEF", "MID", "MID", "MID", "MID", "MID", "MID", "ATT", "ATT", "ATT", "ATT"];
     const players = positions.map((pos, i) => ({
       player_id: crypto.randomUUID(),
@@ -51,10 +58,11 @@ serve(async (req: Request) => {
       age: Math.floor(Math.random() * 10) + 18,
       current_team_id: team.id,
     }));
+    // If your table is "players", change below to .from("players")
     const { error: playersErr } = await supabase.from("player").insert(players);
     if (playersErr) throw playersErr;
 
-    // 👇 Convida utilizadores
+    // Invite users
     if (Array.isArray(invites)) {
       for (const email of invites.filter((e: string) => e.trim() !== "")) {
         await supabase.from("league_invites").insert([{ league_id: league.id, email }]);
@@ -62,15 +70,16 @@ serve(async (req: Request) => {
       }
     }
 
-    return handleCors(req, new Response(JSON.stringify({ leagueId: league.id, teamId: team.id }), {
+    response = new Response(JSON.stringify({ leagueId: league.id, teamId: team.id }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
-    }));
+    });
   } catch (err: any) {
-    console.error("createLeague error:", err);
-    return handleCors(req, new Response(JSON.stringify({ error: err.message }), {
+    console.error("createLeague error:", err?.message || err);
+    response = new Response(JSON.stringify({ error: err?.message || "Unknown error" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
-    }));
+    });
   }
+  return handleCors(req, response);
 });

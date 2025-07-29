@@ -28,7 +28,6 @@ const CreateLeaguePage: React.FC = () => {
 
     if (!teamName || !teamAcronym) {
       setErrorMsg("Team name and acronym are required");
-
       return;
     }
 
@@ -69,20 +68,28 @@ const CreateLeaguePage: React.FC = () => {
         .map((email) => email.trim())
         .filter((e) => e !== "");
 
-      const { data, error } = await supabase.functions.invoke("createLeague", {
-        body: {
+      // ✅ Call local proxy API instead of direct Edge Function
+      const res = await fetch("/api/createLeague", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           name: leagueName,
           teamName,
           teamAcronym,
           logoUrl,
           invites,
-        },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const { error } = await res.json();
+        throw new Error(error || "Failed to create league");
+      }
+
+      const { leagueId, teamId } = await res.json();
 
       router.push("/main/dashboard");
     } catch (err: any) {

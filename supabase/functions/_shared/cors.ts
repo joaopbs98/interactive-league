@@ -1,11 +1,10 @@
-// functions/_shared/cors.ts
 export function isPreflight(req: Request): boolean {
   return req.method === "OPTIONS";
 }
 
 export function handleCors(req: Request, res?: Response): Response {
   const headers = new Headers(res?.headers || {});
-  headers.set("Access-Control-Allow-Origin", "*"); // ou o domínio exato
+  headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
 
