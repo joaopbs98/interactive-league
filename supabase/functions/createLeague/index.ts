@@ -74,7 +74,6 @@ const user = data.user;
       name: `Player ${index + 1}`,
       position: pos,
       rating: Math.floor(Math.random() * 11) + 50,
-      age: Math.floor(Math.random() * 10) + 18,
       current_team_id: team.id,
     }));
     const { error: playersErr } = await supabase.from("player").insert(players);

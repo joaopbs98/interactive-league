@@ -2,10 +2,11 @@
 
 import React, { useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@/utils/supabase/client";
 
 const CreateLeaguePage: React.FC = () => {
   const router = useRouter();
+  const supabase = createClient();
 
   const [leagueName, setLeagueName] = useState<string>("");
   const [teamName, setTeamName] = useState<string>("");
@@ -30,10 +31,6 @@ const CreateLeaguePage: React.FC = () => {
 
     setLoading(true);
     try {
-      // ⬇️ Debug opcional para ver se o token existe
-      const session = await supabase.auth.getSession();
-      console.log("JWT", session.data.session?.access_token);
-
       let logoUrl: string | null = null;
       if (logoFile) {
         const fileExt = logoFile.name.split(".").pop();
@@ -62,27 +59,26 @@ const CreateLeaguePage: React.FC = () => {
           .filter((em) => !!em);
       }
 
-      const token = session.data.session?.access_token;
+      // Call our API route instead of Supabase Edge Function directly
+      const response = await fetch("/api/createleague", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: leagueName,
+          teamName: teamName,
+          teamAcronym: teamAcronym,
+          logoUrl: logoUrl,
+          invites: invites,
+        }),
+      });
 
-      if (!token) throw new Error("No auth token found");
+      const result = await response.json();
 
-      const { data: result, error } = await supabase.functions.invoke(
-        "createLeague",
-        {
-          body: {
-            name: leagueName,
-            teamName: teamName,
-            teamAcronym: teamAcronym,
-            logoUrl: logoUrl,
-            invites: invites,
-          },
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to create league");
+      }
 
       // ✅ Success
       router.push("/main/dashboard");

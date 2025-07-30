@@ -4,7 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 
 export async function signInWithGoogle(redirectTo: string) {
   const supabase = await createClient();
-  const redirectURL = `http://localhost:3000/auth/callback?next=${redirectTo}`;
+  const redirectURL = `http://127.0.0.1:3000/auth/callback?next=${redirectTo}`;
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
