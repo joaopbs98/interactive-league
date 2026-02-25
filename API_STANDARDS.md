@@ -46,7 +46,7 @@ import { updateSession } from '@/utils/supabase/middleware';
 
 ### Server Actions
 ```typescript
-import { signInWithGoogle, signOut } from '@/actions/auth';
+import { signOut } from '@/actions/auth';
 ```
 
 ### API Routes

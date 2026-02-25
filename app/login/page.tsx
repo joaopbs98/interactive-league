@@ -1,11 +1,9 @@
 "use client";
 
-import React, { useState, useActionState, useEffect, Suspense } from "react";
+import React, { useActionState, Suspense } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 import { login, signup } from "./action";
 import { Images } from "@/lib/assets";
-import { signInWithGoogle } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,33 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 function LoginPageContent() {
-  const searchParams = useSearchParams();
-  const [isLoading, setIsLoading] = useState(false);
   const [loginState, loginFormAction, loginPending] = useActionState(login, { error: null, success: null });
   const [signupState, signupFormAction, signupPending] = useActionState(signup, { error: null, success: null });
-
-  // If OAuth redirected to /login?code=xxx (misconfigured redirect URL), forward to callback
-  useEffect(() => {
-    const code = searchParams.get("code");
-    if (code) {
-      const next = searchParams.get("next") || "/saves";
-      window.location.replace(`/auth/callback?code=${encodeURIComponent(code)}&next=${encodeURIComponent(next)}`);
-    }
-  }, [searchParams]);
-
-  async function handleSignIn() {
-    setIsLoading(true);
-    try {
-      const { url } = await signInWithGoogle("/saves");
-      if (url) {
-        window.location.href = url;
-      }
-    } catch (error) {
-      console.error("Google sign in error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
 
   return (
     <div className="min-h-screen w-full flex bg-background">
@@ -127,52 +100,6 @@ function LoginPageContent() {
                       {loginPending ? "Signing in..." : "Sign In"}
                     </Button>
                   </form>
-                  
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t border-neutral-700" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-neutral-900 px-2 text-neutral-400">Or continue with</span>
-                    </div>
-                  </div>
-                  
-                  <Button
-                    onClick={handleSignIn}
-                    disabled={isLoading}
-                    className="w-full bg-white hover:bg-neutral-100 text-black"
-                    variant="outline"
-                  >
-                    {isLoading ? (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
-                        Loading...
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 16 16"
-                          aria-hidden
-                          className="size-4"
-                        >
-                          <g clipPath="url(#google-clip)">
-                            <path
-                              fill="currentColor"
-                              d="M8.32 7.28v2.187h5.227c-.16 1.226-.57 2.124-1.192 2.755-.764.765-1.955 1.6-4.035 1.6-3.218 0-5.733-2.595-5.733-5.813 0-3.218 2.515-5.814 5.733-5.814 1.733 0 3.005.685 3.938 1.565l1.538-1.538C12.498.96 10.756 0 8.32 0 3.91 0 .205 3.591.205 8s3.706 8 8.115 8c2.382 0 4.178-.782 5.582-2.24 1.44-1.44 1.893-3.475 1.893-5.111 0-.507-.035-.978-.115-1.369H8.32Z"
-                            />
-                          </g>
-                          <defs>
-                            <clipPath id="google-clip">
-                              <path fill="#fff" d="M0 0h16v16H0z" />
-                            </clipPath>
-                          </defs>
-                        </svg>
-                        Continue with Google
-                      </div>
-                    )}
-                  </Button>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -240,52 +167,6 @@ function LoginPageContent() {
                       {signupPending ? "Creating account..." : "Create Account"}
                     </Button>
                   </form>
-                  
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t border-neutral-700" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-neutral-900 px-2 text-neutral-400">Or continue with</span>
-                    </div>
-                  </div>
-                  
-                  <Button
-                    onClick={handleSignIn}
-                    disabled={isLoading}
-                    className="w-full bg-white hover:bg-neutral-100 text-black"
-                    variant="outline"
-                  >
-                    {isLoading ? (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
-                        Loading...
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 16 16"
-                          aria-hidden
-                          className="size-4"
-                        >
-                          <g clipPath="url(#google-clip)">
-                            <path
-                              fill="currentColor"
-                              d="M8.32 7.28v2.187h5.227c-.16 1.226-.57 2.124-1.192 2.755-.764.765-1.955 1.6-4.035 1.6-3.218 0-5.733-2.595-5.733-5.813 0-3.218 2.515-5.814 5.733-5.814 1.733 0 3.005.685 3.938 1.565l1.538-1.538C12.498.96 10.756 0 8.32 0 3.91 0 .205 3.591.205 8s3.706 8 8.115 8c2.382 0 4.178-.782 5.582-2.24 1.44-1.44 1.893-3.475 1.893-5.111 0-.507-.035-.978-.115-1.369H8.32Z"
-                            />
-                          </g>
-                          <defs>
-                            <clipPath id="google-clip">
-                              <path fill="#fff" d="M0 0h16v16H0z" />
-                            </clipPath>
-                          </defs>
-                        </svg>
-                        Continue with Google
-                      </div>
-                    )}
-                  </Button>
                 </CardContent>
               </Card>
             </TabsContent>
