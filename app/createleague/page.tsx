@@ -3,13 +3,21 @@
 import React, { useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
-
-const supabase = createClient();
+import { useLeague } from "@/contexts/LeagueContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const CreateLeaguePage: React.FC = () => {
   const router = useRouter();
+  const supabase = createClient();
+  const { clearSelection } = useLeague();
 
   const [leagueName, setLeagueName] = useState<string>("");
+  const [maxTeams, setMaxTeams] = useState<number>(20);
   const [teamName, setTeamName] = useState<string>("");
   const [teamAcronym, setTeamAcronym] = useState<string>("");
   const [inviteEmails, setInviteEmails] = useState<string>("");
@@ -44,7 +52,6 @@ const CreateLeaguePage: React.FC = () => {
 
       const token = session.access_token;
 
-      // Upload logo if needed
       let logoUrl: string | null = null;
       if (logoFile) {
         const fileExt = logoFile.name.split(".").pop();
@@ -68,8 +75,7 @@ const CreateLeaguePage: React.FC = () => {
         .map((email) => email.trim())
         .filter((e) => e !== "");
 
-      // ✅ Call local proxy API instead of direct Edge Function
-      const res = await fetch("/api/createLeague", {
+      const res = await fetch("/api/createleague", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -81,17 +87,23 @@ const CreateLeaguePage: React.FC = () => {
           teamAcronym,
           logoUrl,
           invites,
+          maxTeams,
         }),
       });
 
+      const result = await res.json();
+
       if (!res.ok) {
-        const { error } = await res.json();
-        throw new Error(error || "Failed to create league");
+        throw new Error(result.error || "Failed to create league");
       }
 
-      const { leagueId, teamId } = await res.json();
+      clearSelection();
 
-      router.push("/main/dashboard");
+      const inviteCode = result.data?.inviteCode;
+      if (inviteCode) {
+        alert(`League created! Share this invite code with friends:\n\n${inviteCode}`);
+      }
+      router.push("/saves?created=true");
     } catch (err: any) {
       console.error("CreateLeague error", err);
       setErrorMsg(err.message || err.description || "Failed to create league");
@@ -101,70 +113,99 @@ const CreateLeaguePage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-md mx-auto p-8 bg-background rounded-xl shadow-xl mt-10">
-      <h1 className="text-xl font-bold mb-6">Create League</h1>
-      <form onSubmit={handleCreateLeague} className="space-y-4">
-        <div>
-          <label className="block mb-1">League Name</label>
-          <input
-            type="text"
-            value={leagueName}
-            onChange={(e) => setLeagueName(e.target.value)}
-            placeholder="League Name"
-            className="w-full border rounded p-2"
-          />
-        </div>
-        <div>
-          <label className="block mb-1">Team Name</label>
-          <input
-            type="text"
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            placeholder="Team Name"
-            required
-            className="w-full border rounded p-2"
-          />
-        </div>
-        <div>
-          <label className="block mb-1">Acronym (3 letters)</label>
-          <input
-            type="text"
-            value={teamAcronym}
-            onChange={(e) => setTeamAcronym(e.target.value.toUpperCase())}
-            maxLength={3}
-            placeholder="e.g. SLB"
-            required
-            className="w-full border rounded p-2"
-          />
-        </div>
-        <div>
-          <label className="block mb-1">Team Logo (PNG)</label>
-          <input
-            type="file"
-            accept="image/png"
-            onChange={handleFileChange}
-            className="w-full"
-          />
-        </div>
-        <div>
-          <label className="block mb-1">Invite Emails (optional)</label>
-          <input
-            type="text"
-            value={inviteEmails}
-            onChange={(e) => setInviteEmails(e.target.value)}
-            placeholder="e.g. test@email.com, another@email.com"
-            className="w-full border rounded p-2"
-          />
-        </div>
-        {errorMsg && <p className="text-red-500">{errorMsg}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-green-600 text-white py-2 rounded"
-        >
-          {loading ? "Creating League..." : "Create League"}
-        </button>
-      </form>
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <Card className="w-full max-w-md bg-neutral-900 border-neutral-800">
+        <CardHeader>
+          <CardTitle className="text-white">Create League</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreateLeague} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="leagueName" className="text-white">League Name</Label>
+              <Input
+                id="leagueName"
+                type="text"
+                value={leagueName}
+                onChange={(e) => setLeagueName(e.target.value)}
+                placeholder="League Name"
+                className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="maxTeams" className="text-white">Max Teams</Label>
+              <Select value={String(maxTeams)} onValueChange={(v) => setMaxTeams(Number(v))}>
+                <SelectTrigger className="bg-neutral-800 border-neutral-700 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="12">12 teams</SelectItem>
+                  <SelectItem value="16">16 teams</SelectItem>
+                  <SelectItem value="18">18 teams</SelectItem>
+                  <SelectItem value="20">20 teams</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="teamName" className="text-white">Team Name</Label>
+              <Input
+                id="teamName"
+                type="text"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="Team Name"
+                required
+                className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="teamAcronym" className="text-white">Acronym (3 letters)</Label>
+              <Input
+                id="teamAcronym"
+                type="text"
+                value={teamAcronym}
+                onChange={(e) => setTeamAcronym(e.target.value.toUpperCase())}
+                maxLength={3}
+                placeholder="e.g. SLB"
+                required
+                className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="logoFile" className="text-white">Team Logo (PNG)</Label>
+              <Input
+                id="logoFile"
+                type="file"
+                accept="image/png"
+                onChange={handleFileChange}
+                className="bg-neutral-800 border-neutral-700 text-white file:bg-neutral-700 file:text-white file:border-0 file:rounded file:px-3 file:py-1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="inviteEmails" className="text-white">Invite Emails (optional)</Label>
+              <Input
+                id="inviteEmails"
+                type="text"
+                value={inviteEmails}
+                onChange={(e) => setInviteEmails(e.target.value)}
+                placeholder="e.g. test@email.com, another@email.com"
+                className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+              />
+            </div>
+            {errorMsg && (
+              <Alert variant="destructive">
+                <AlertDescription>{errorMsg}</AlertDescription>
+              </Alert>
+            )}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              {loading ? "Creating League..." : "Create League"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 };

@@ -1,220 +1,210 @@
 "use client";
 
-import * as React from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import Image from "next/image";
-import { Images } from "@/lib/assets";
-
-type ImageKeys = keyof typeof Images;
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useLeague } from "@/contexts/LeagueContext";
+import { Loader2, ArrowUpRight, ArrowDownRight, DollarSign, TrendingDown } from "lucide-react";
+import { toast } from "sonner";
 
 type Transaction = {
-  id: any;
-  icon: ImageKeys;
-  title: any;
-  subtitle: any;
-  fromClub?: ImageKeys;
-  toClub?: ImageKeys;
-  amount: any;
+  id: string;
+  amount: number;
+  reason: string;
+  description: string;
+  season: number;
+  date: string;
+  created_at: string;
 };
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: 1,
-    icon: Images.JN,
-    title: "João Neves",
-    subtitle: "CM",
-    fromClub: "Benfica",
-    toClub: "Benfica",
-    amount: -1999,
-  },
-  {
-    id: 2,
-    icon: Images.Nike,
-    title: "Nike",
-    subtitle: "Sponsorship",
-    fromClub: "MC",
-    toClub: undefined,
-    amount: +1999,
-  },
-  {
-    id: 3,
-    icon: Images.JN,
-    title: "João Neves",
-    subtitle: "CM",
-    fromClub: "MC",
-    toClub: "LU",
-    amount: -1750,
-  },
-  {
-    id: 4,
-    icon: Images.Nike,
-    title: "Nike",
-    subtitle: "Sponsorship",
-    fromClub: "MC",
-    toClub: undefined,
-    amount: +1333,
-  },
-  {
-    id: 5,
-    icon: Images.Loan, // placeholder circle image
-    title: "60M Loan",
-    subtitle: "Loan",
-    fromClub: "MC",
-    toClub: undefined,
-    amount: +60000000,
-  },
-  {
-    id: 6,
-    icon: Images.Loan, // placeholder circle image
-    title: "Loan",
-    subtitle: "Loan",
-    fromClub: "MC",
-    toClub: undefined,
-    amount: +60000000,
-  },
-  {
-    id: 7,
-    icon: Images.Prime,
-    title: "S6 Prime",
-    subtitle: "Pack",
-    fromClub: "MC",
-    toClub: undefined,
-    amount: -1999,
-  },
-  {
-    id: 8,
-    icon: Images.JN,
-    title: "João Neves",
-    subtitle: "CM",
-    fromClub: "Benfica",
-    toClub: "Benfica",
-    amount: -1999,
-  },
-];
-
-const STATS = [
-  { title: "Current Balance", value: "$65.4M" },
-  { title: "Total Income", value: "$43.3M" },
-  { title: "Total Expenses", value: "$13.3M" },
-  { title: "Net Balance", value: "+$23.3M" },
-];
+type TeamFinances = {
+  merchPercentage: number;
+  merchBaseRevenue: number;
+  leversEnabled?: boolean;
+};
 
 export default function TransactionsPage() {
-  const [tab, setTab] = React.useState("all");
+  const { selectedTeam } = useLeague();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [teamFinances, setTeamFinances] = useState<TeamFinances | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sellPct, setSellPct] = useState("");
+  const [selling, setSelling] = useState(false);
 
-  const filtered = React.useMemo(() => {
-    switch (tab) {
-      case "income":
-        return MOCK_TRANSACTIONS.filter((tx) => tx.amount > 0);
-      case "expenses":
-        return MOCK_TRANSACTIONS.filter((tx) => tx.amount < 0);
-      case "packs":
-        return MOCK_TRANSACTIONS.filter((tx) => tx.subtitle === "Pack");
-      case "transfers":
-        return MOCK_TRANSACTIONS.filter((tx) => tx.subtitle === "Transfer");
-      default:
-        return MOCK_TRANSACTIONS;
+  useEffect(() => {
+    if (selectedTeam?.id) fetchTransactions();
+  }, [selectedTeam]);
+
+  const fetchTransactions = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/team/${selectedTeam!.id}/finances`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setTransactions(data.data.transactions ?? []);
+        setTeamFinances(data.data.team ? {
+          merchPercentage: data.data.team.merchPercentage ?? 0,
+          merchBaseRevenue: data.data.team.merchBaseRevenue ?? 0,
+          leversEnabled: data.data.team.leversEnabled ?? true
+        } : null);
+      }
+    } catch (err) {
+      console.error("Failed to fetch transactions:", err);
+    } finally {
+      setLoading(false);
     }
-  }, [tab]);
+  };
+
+  const handleSellMerch = async () => {
+    const pct = parseFloat(sellPct);
+    if (isNaN(pct) || pct <= 0 || !selectedTeam?.id) return;
+    setSelling(true);
+    try {
+      const res = await fetch(`/api/team/${selectedTeam.id}/sell-merch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pctToSell: pct }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Sold ${pct}% merch for $${(json.data.payout ?? 0).toLocaleString()} (10% fee)`);
+        setSellPct("");
+        fetchTransactions();
+      } else {
+        toast.error(json.error ?? "Failed to sell merch");
+      }
+    } catch (err) {
+      toast.error("Failed to sell merch");
+    } finally {
+      setSelling(false);
+    }
+  };
+
+  const formatMoney = (amount: number) => {
+    const abs = Math.abs(amount);
+    if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `${(abs / 1_000).toFixed(0)}K`;
+    return abs.toString();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const totalIn = transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+  const totalOut = transactions.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
 
   return (
-    <div className="p-8 flex flex-col gap-8">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {STATS.map((s) => (
-          <Card key={s.title}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">{s.title}</p>
-              <p className="mt-1 text-xl font-semibold">{s.value}</p>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="p-8 flex flex-col gap-6">
+      <h2 className="text-2xl font-bold">Transactions & Finances</h2>
+
+      {teamFinances && teamFinances.merchPercentage > 0 && (teamFinances.leversEnabled !== false) && (
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <TrendingDown className="h-5 w-5" /> Sell Merch % (Lever)
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Sell future merchandise revenue for immediate payout. 10% transaction cost. Base 30% cannot be sold.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <Label className="text-xs">% to sell (max {teamFinances.merchPercentage})</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max={teamFinances.merchPercentage}
+                  placeholder="e.g. 5"
+                  value={sellPct}
+                  onChange={(e) => setSellPct(e.target.value)}
+                  className="w-24 mt-1"
+                />
+              </div>
+              <Button onClick={handleSellMerch} disabled={selling || !sellPct}>
+                {selling ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sell"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-900/30"><ArrowUpRight className="h-5 w-5 text-green-400" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total Income</p>
+              <p className="text-lg font-bold text-green-400">{formatMoney(totalIn)}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-red-900/30"><ArrowDownRight className="h-5 w-5 text-red-400" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total Expenses</p>
+              <p className="text-lg font-bold text-red-400">{formatMoney(totalOut)}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-900/30"><DollarSign className="h-5 w-5 text-blue-400" /></div>
+            <div>
+              <p className="text-xs text-muted-foreground">Net</p>
+              <p className={`text-lg font-bold ${totalIn - totalOut >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalIn - totalOut >= 0 ? '+' : '-'}{formatMoney(Math.abs(totalIn - totalOut))}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Transactions Overview</h2>
-        <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="rounded-full bg-muted p-1 flex space-x-2">
-            <TabsTrigger value="all" className="flex-1">
-              All Transactions
-            </TabsTrigger>
-            <TabsTrigger value="income" className="flex-1">
-              Club Related Income
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="flex-1">
-              Club Related Expenses
-            </TabsTrigger>
-            <TabsTrigger value="packs" className="flex-1">
-              Packs
-            </TabsTrigger>
-            <TabsTrigger value="transfers" className="flex-1">
-              Transfers
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <ScrollArea className="h-[500px] rounded-lg border border-neutral-700">
-          <div className="space-y-2 p-4 flex flex-col gap-4">
-            {filtered.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex items-center justify-between gap-4"
-              >
-                <div className="flex items-center gap-4 min-w-[240px]">
-                  <div className="w-10 h-10 rounded-full bg-white overflow-hidden">
-                    <Image src={tx.icon} alt="" width={40} height={40} />
+      <Card className="bg-neutral-900 border-neutral-800">
+        <CardHeader>
+          <CardTitle className="text-lg">Transaction History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {transactions.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-8">No transactions yet</p>
+          ) : (
+            <div className="space-y-2">
+              {transactions.map(tx => (
+                <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-neutral-800/50 hover:bg-neutral-800">
+                  <div className="flex items-center gap-3">
+                    {tx.amount >= 0 ? (
+                      <ArrowUpRight className="h-4 w-4 text-green-400" />
+                    ) : (
+                      <ArrowDownRight className="h-4 w-4 text-red-400" />
+                    )}
+                    <div>
+                      <p className="text-sm font-medium">{tx.description || tx.reason}</p>
+                      <p className="text-xs text-muted-foreground">Season {tx.season}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{tx.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {tx.subtitle}
+                  <div className="text-right">
+                    <p className={`font-bold ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {tx.amount >= 0 ? '+' : '-'}{formatMoney(Math.abs(tx.amount))}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(tx.created_at).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 flex-1 justify-center">
-                  {tx.fromClub && (
-                    <Image
-                      src={Images[tx.fromClub]}
-                      alt=""
-                      width={24}
-                      height={24}
-                      className="rounded-full"
-                    />
-                  )}
-                  {tx.toClub && (
-                    <>
-                      <span>→</span>
-                      <Image
-                        src={Images[tx.toClub]}
-                        alt=""
-                        width={24}
-                        height={24}
-                        className="rounded-full"
-                      />
-                    </>
-                  )}
-                </div>
-
-                {/* Amount */}
-                <div className="min-w-[96px] text-right">
-                  <span
-                    className={
-                      tx.amount >= 0
-                        ? "text-green-500 font-semibold"
-                        : "text-red-500 font-semibold"
-                    }
-                  >
-                    {tx.amount >= 0 ? "+" : "-"}$
-                    {Math.abs(tx.amount).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

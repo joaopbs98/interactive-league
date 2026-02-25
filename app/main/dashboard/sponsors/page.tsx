@@ -1,248 +1,241 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Images } from "@/lib/assets";
+import { useLeague } from "@/contexts/LeagueContext";
+import { Toaster, toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 type Sponsor = {
-  id: number;
+  id: string;
   name: string;
-  type: "Main" | "Kit";
-  risk: "Low" | "High";
-  payout: string;
-  season5: string;
-  season6: string;
-  total2: string;
-  totalLabel: string;
-  bonus?: string;
+  base_payment: number;
+  bonus_amount: number | null;
+  bonus_condition: string | null;
 };
 
-const PRIMARY_SPONSORS: Sponsor[] = [
-  {
-    id: 1,
-    name: "Vodafone",
-    type: "Main",
-    risk: "Low",
-    payout: "Low",
-    season5: "67.5M",
-    season6: "85.0M",
-    total2: "152.5M",
-    totalLabel: "2-Season Total (Estimated)",
-    bonus: "1% Merchandise Revenue if Qualified for Champions League",
-  },
-  {
-    id: 2,
-    name: "Puma",
-    type: "Kit",
-    risk: "Low",
-    payout: "",
-    season5: "—",
-    season6: "—",
-    total2: "",
-    totalLabel: "",
-    bonus: undefined,
-  },
-];
-
-const NEXT_SPONSORS: Sponsor[] = [
-  {
-    id: 3,
-    name: "Spotify",
-    type: "Main",
-    risk: "Low",
-    payout: "Low",
-    season5: "67.5M",
-    season6: "85.0M",
-    total2: "152.5M",
-    totalLabel: "2-Season Total (Estimated)",
-  },
-  {
-    id: 4,
-    name: "Qatar",
-    type: "Main",
-    risk: "High",
-    payout: "High",
-    season5: "95M",
-    season6: "Performance Based",
-    total2: "95M",
-    totalLabel: "2-Season Total (Estimated)",
-  },
-  {
-    id: 5,
-    name: "Crypto.com",
-    type: "Main",
-    risk: "High",
-    payout: "Variable",
-    season5: "70M",
-    season6: "Stock Price Dependant",
-    total2: "70M",
-    totalLabel: "2-Season Total (Estimated)",
-  },
-];
+function formatMoney(n: number) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(0) + "K";
+  return String(n);
+}
 
 export default function SponsorsPage() {
-  const [tab, setTab] = useState<"main" | "kit">("main");
+  const { selectedLeagueId, selectedTeam } = useLeague();
+  const [sponsors, setSponsors] = useState<Sponsor[]>([]);
+  const [currentSponsorId, setCurrentSponsorId] = useState<string | null>(null);
+  const [leagueStatus, setLeagueStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [assigning, setAssigning] = useState<string | null>(null);
+
+  const canChangeSponsor = leagueStatus === "OFFSEASON";
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!selectedTeam?.id || !selectedLeagueId) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const [sponsorsRes, teamRes, leagueRes] = await Promise.all([
+          fetch(`/api/sponsors${selectedLeagueId ? `?leagueId=${selectedLeagueId}` : ""}`),
+          fetch(`/api/user/team/${selectedLeagueId}`),
+          fetch(`/api/league/game?leagueId=${selectedLeagueId}&type=league_info`).catch(() => null),
+        ]);
+        if (sponsorsRes.ok) {
+          const { sponsors: list } = await sponsorsRes.json();
+          setSponsors(list || []);
+        }
+        if (teamRes.ok) {
+          const data = await teamRes.json();
+          setCurrentSponsorId(data.team?.sponsor_id ?? null);
+        }
+        if (leagueRes?.ok) {
+          const data = await leagueRes.json();
+          setLeagueStatus(data.data?.status ?? null);
+        }
+      } catch (err) {
+        toast.error("Failed to load sponsors");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [selectedLeagueId, selectedTeam?.id]);
+
+  const currentSponsor = currentSponsorId
+    ? sponsors.find((s) => s.id === currentSponsorId)
+    : null;
+
+  const handleAssign = async (sponsorId: string | null) => {
+    if (!selectedTeam?.id) return;
+    setAssigning(sponsorId ?? "clear");
+    try {
+      const res = await fetch(`/api/team/${selectedTeam.id}/sponsor`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sponsorId }),
+      });
+      if (res.ok) {
+        setCurrentSponsorId(sponsorId);
+        toast.success(sponsorId ? "Sponsor signed!" : "Sponsor removed");
+      } else {
+        const err = await res.json();
+        toast.error(err.error ?? "Failed to update sponsor");
+      }
+    } catch {
+      toast.error("Failed to update sponsor");
+    } finally {
+      setAssigning(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!selectedTeam) {
+    return (
+      <div className="p-8">
+        <h2 className="text-2xl font-semibold">Sponsorships</h2>
+        <p className="text-muted-foreground mt-4">Select a league and team to manage sponsors.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 flex flex-col gap-8">
+      <Toaster position="top-center" richColors />
       <h2 className="text-2xl font-semibold">Sponsorships</h2>
 
-      {/* Top Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Main Sponsor Card */}
-        <Card className="bg-card border-border">
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">Main Sponsor</p>
-            <h3 className="text-xl font-semibold">Vodafone</h3>
-            <div className="flex gap-2">
-              <Badge variant="outline" className="bg-green-800 text-white">
-                Low Risk
-              </Badge>
-              <Badge variant="outline" className="bg-green-800 text-white">
-                Low Payout
-              </Badge>
-            </div>
-            <div className="bg-background p-4 rounded-lg space-y-2">
-              <div className="flex justify-between">
-                <span>Season 5 Income</span>
-                <span className="font-semibold text-green-500">67.5M</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Season 6 Income</span>
-                <span className="font-semibold text-green-500">85.0M</span>
-              </div>
-              <div className="flex justify-between">
-                <span>{PRIMARY_SPONSORS[0].totalLabel}</span>
-                <span className="font-semibold text-green-500">152.5M</span>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              <span className="font-semibold">Active Bonuses:</span>{" "}
-              {PRIMARY_SPONSORS[0].bonus}
-            </p>
-          </CardContent>
-        </Card>
+      {!canChangeSponsor && (
+        <p className="text-sm text-amber-500">
+          Sponsor changes are only allowed during OFFSEASON. Current phase: {leagueStatus ?? "—"}
+        </p>
+      )}
 
-        {/* Kit Supplier Card */}
-        <Card className="bg-card border-border">
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">Kit Supplier</p>
-            <h3 className="text-xl font-semibold">Puma</h3>
-            <div className="bg-background p-4 rounded-lg space-y-2">
-              <p className="text-sm uppercase text-muted-foreground">
-                Merchandise Income
+      {/* Current Sponsor */}
+      <div>
+        <h3 className="text-lg font-medium mb-4">Current Sponsor</h3>
+        {currentSponsor ? (
+          <Card className="bg-card border-border max-w-md">
+            <CardContent className="space-y-4 pt-6">
+              <h4 className="text-xl font-semibold">{currentSponsor.name}</h4>
+              <div className="flex gap-2 flex-wrap">
+                {currentSponsor.bonus_condition && (
+                  <Badge variant="outline" className="bg-green-800 text-white">
+                    Bonus: {currentSponsor.bonus_condition}
+                  </Badge>
+                )}
+              </div>
+              <div className="bg-background p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span>Base payment (per season)</span>
+                  <span className="font-semibold text-green-500">
+                    €{formatMoney(currentSponsor.base_payment)}
+                  </span>
+                </div>
+                {currentSponsor.bonus_amount != null && currentSponsor.bonus_amount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Bonus (if condition met)</span>
+                    <span className="font-semibold text-green-500">
+                      €{formatMoney(currentSponsor.bonus_amount)}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {canChangeSponsor && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAssign(null)}
+                  disabled={!!assigning}
+                >
+                  {assigning === "clear" ? "Removing…" : "Remove Sponsor"}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="bg-card border-border max-w-md border-dashed">
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground">No sponsor signed yet.</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Sign a sponsor below to receive base payment and bonuses at end of season.
               </p>
-              <h4 className="text-lg font-semibold text-orange-500">
-                Standard Merchandise Revenue
-              </h4>
-              <div className="flex justify-between text-sm">
-                <span>Season 5</span>
-                <span>2.5% increase in merchandise revenue</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Season 6</span>
-                <span>2.5% increase in merchandise revenue</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Next Season Sponsors Tabs */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-semibold">Next Season Sponsors</h2>
-        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-          <TabsList className="rounded-full bg-muted p-1 flex space-x-2 w-max">
-            <TabsTrigger
-              value="main"
-              className="flex-1 px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              Main Sponsors
-            </TabsTrigger>
-            <TabsTrigger
-              value="kit"
-              className="flex-1 px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              Kit Sponsors
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="main">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {NEXT_SPONSORS.map((s) => (
-                <Card key={s.id} className="bg-card border-border">
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-semibold">{s.name}</h3>
-                      <div className="flex gap-2">
-                        <Badge
-                          variant="outline"
-                          className={
-                            s.risk === "Low"
-                              ? "bg-green-800 text-white"
-                              : "bg-red-700 text-white"
-                          }
-                        >
-                          {s.risk} Risk
-                        </Badge>
-                        {s.payout && (
-                          <Badge
-                            variant="outline"
-                            className="bg-green-800 text-white"
-                          >
-                            {s.payout} Payout
-                          </Badge>
-                        )}
-                      </div>
+      {/* Available Sponsors */}
+      <div>
+        <h3 className="text-lg font-medium mb-4">Available Sponsors</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sponsors.map((s) => {
+            const isCurrent = s.id === currentSponsorId;
+            const hasBonus = s.bonus_condition && s.bonus_amount != null && s.bonus_amount > 0;
+            return (
+              <Card key={s.id} className="bg-card border-border">
+                <CardContent className="space-y-4 pt-6">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-lg font-semibold">{s.name}</h4>
+                    {hasBonus && (
+                      <Badge variant="outline" className="bg-green-800 text-white text-xs">
+                        {s.bonus_condition}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="bg-background p-4 rounded-lg space-y-2">
+                    <div className="flex justify-between">
+                      <span>Base (per season)</span>
+                      <span className="font-semibold text-green-500">
+                        €{formatMoney(s.base_payment)}
+                      </span>
                     </div>
-                    <div className="bg-background p-4 rounded-lg space-y-2">
-                      <div className="flex justify-between">
-                        <span>Season 5 Income</span>
+                    {s.bonus_amount != null && s.bonus_amount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Bonus</span>
                         <span className="font-semibold text-green-500">
-                          {s.season5}
+                          €{formatMoney(s.bonus_amount)}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Season 6 Income</span>
-                        <span
-                          className={`font-semibold ${
-                            s.risk === "High"
-                              ? "text-yellow-400"
-                              : "text-green-500"
-                          }`}
-                        >
-                          {s.season6}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>{s.totalLabel}</span>
-                        <span className="font-semibold text-green-500">
-                          {s.total2}
-                        </span>
-                      </div>
-                    </div>
-                    <Button variant="outline" className="w-full">
-                      Check Details
+                    )}
+                  </div>
+                  {canChangeSponsor && (
+                    <Button
+                      variant={isCurrent ? "secondary" : "default"}
+                      className="w-full"
+                      onClick={() => (isCurrent ? handleAssign(null) : handleAssign(s.id))}
+                      disabled={!!assigning}
+                    >
+                      {assigning === s.id
+                        ? "Signing…"
+                        : assigning === "clear"
+                          ? "…"
+                          : isCurrent
+                            ? "Current"
+                            : "Sign Sponsor"}
                     </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="kit">
-            {/* Kit sponsors content (similar structure) */}
-            <div className="text-center py-8 text-muted-foreground">
-              No kit sponsors yet.
-            </div>
-          </TabsContent>
-        </Tabs>
+                  )}
+                  {!canChangeSponsor && isCurrent && (
+                    <p className="text-xs text-muted-foreground">Your current sponsor</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+        {sponsors.length === 0 && (
+          <p className="text-muted-foreground">No sponsors available. Run migrations to seed data.</p>
+        )}
       </div>
     </div>
   );

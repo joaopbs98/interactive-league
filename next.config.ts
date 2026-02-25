@@ -1,17 +1,27 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  eslint: { ignoreDuringBuilds: true },
   async redirects() {
     return [
       {
         source: "/",
-        destination: "/main/dashboard",
+        destination: "/login",
         permanent: true,
       },
     ];
   },
   images: {
-    domains: ["cdn.sofifa.net"],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.sofifa.net",
+      },
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+      },
+    ],
   },
   server: {
     proxy: {

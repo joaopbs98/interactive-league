@@ -2,7 +2,7 @@
 
 import React, { useState, FormEvent, useMemo } from "react";
 import Image from "next/image";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@/utils/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,9 @@ export default function PlayerSearchPage() {
   const [player, setPlayer] = useState<PlayerRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Create Supabase client
+  const supabase = createClient();
 
   // 1) search RPC returns accent‐insensitive superset; 2) client‐filter on all tokens
   const handleSearch = async (e: FormEvent) => {
@@ -259,7 +262,7 @@ export default function PlayerSearchPage() {
             <Card>
               <CardContent className="flex items-start gap-6">
                 <Image
-                  src={player.image}
+                  src={player.image ?? "/assets/noImage.jpeg"}
                   alt={player.full_name ?? ""}
                   width={120}
                   height={120}

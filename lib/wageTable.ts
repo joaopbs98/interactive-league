@@ -35,13 +35,13 @@ export const wageTable: Record<number, { def: number; att: number }> = {
   62: { def: 1_120_000, att: 1_400_000 },
   61: { def: 960_000, att: 1_200_000 },
   60: { def: 800_000, att: 1_000_000 },
-  59: { def: 800_000, att: 1_000_000 },
-  58: { def: 800_000, att: 1_000_000 },
-  57: { def: 800_000, att: 1_000_000 },
-  56: { def: 800_000, att: 1_000_000 },
-  55: { def: 800_000, att: 1_000_000 },
-  54: { def: 800_000, att: 1_000_000 },
-  53: { def: 800_000, att: 1_000_000 },
+  59: { def: 720_000, att: 900_000 },
+  58: { def: 640_000, att: 800_000 },
+  57: { def: 560_000, att: 700_000 },
+  56: { def: 480_000, att: 600_000 },
+  55: { def: 400_000, att: 500_000 },
+  54: { def: 320_000, att: 400_000 },
+  53: { def: 240_000, att: 300_000 }
 };
 
 function parsePrimaryPosition(posCsv: string): string {

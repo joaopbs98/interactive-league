@@ -39,14 +39,40 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
-  ) {
-    // no user, potentially respond by redirecting the user to the login page
+  // Server actions must not be redirected by middleware - they expect RSC payload,
+  // not a 307. Redirecting causes "An unexpected response was received from the server".
+  const isServerAction = request.headers.get("Next-Action");
+  if (isServerAction) {
+    return supabaseResponse;
+  }
+
+  // Define public routes that don't require authentication
+  const publicRoutes = [
+    "/login",
+    "/auth",
+    "/api/auth",
+    "/_next",
+    "/favicon.ico",
+    "/static",
+    "/images",
+    "/assets"
+  ];
+
+  const isPublicRoute = publicRoutes.some(route => 
+    request.nextUrl.pathname.startsWith(route)
+  );
+
+  // If user is not authenticated and trying to access a protected route
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  // If user is authenticated and trying to access login page, redirect to saves
+  if (user && request.nextUrl.pathname === "/login") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/saves";
     return NextResponse.redirect(url);
   }
 

@@ -1,0 +1,31 @@
+id,season,pack_type,price,player_count,name,description
+31,1,Basic,8000000,3,S1 Basic,Basic pack with lower-rated players
+32,1,Prime,14000000,3,S1 Prime,Prime pack with better odds
+33,1,Elite,20000000,3,S1 Elite,Elite pack with best odds
+34,2,Basic,9000000,3,S2 Basic,Basic pack with improved odds
+35,2,Prime,15250000,3,S2 Prime,Prime pack with better odds
+36,2,Elite,22000000,3,S2 Elite,Elite pack with best odds
+37,3,Basic,10000000,3,S3 Basic,Basic pack with decent odds
+38,3,Prime,16500000,3,S3 Prime,Prime pack with better odds
+39,3,Elite,24000000,3,S3 Elite,Elite pack with best odds
+40,4,Basic,10000000,3,S4 Basic,Basic pack with improved odds
+41,4,Prime,17500000,3,S4 Prime,Prime pack with better odds
+42,4,Elite,26000000,3,S4 Elite,Elite pack with best odds
+43,5,Basic,9000000,3,S5 Basic,Basic pack with good odds
+44,5,Prime,18000000,3,S5 Prime,Prime pack with better odds
+45,5,Elite,28000000,3,S5 Elite,Elite pack with best odds
+46,6,Basic,9000000,3,S6 Basic,Basic pack with very good odds
+47,6,Prime,18000000,3,S6 Prime,Prime pack with better odds
+48,6,Elite,27000000,3,S6 Elite,Elite pack with best odds
+49,7,Basic,9000000,3,S7 Basic,Basic pack with excellent odds
+50,7,Prime,18000000,3,S7 Prime,Prime pack with better odds
+51,7,Elite,28000000,3,S7 Elite,Elite pack with best odds
+52,8,Basic,8000000,3,S8 Basic,Basic pack with outstanding odds
+53,8,Prime,17000000,3,S8 Prime,Prime pack with better odds
+54,8,Elite,29000000,3,S8 Elite,Elite pack with best odds
+55,9,Basic,8000000,3,S9 Basic,Basic pack with exceptional odds
+56,9,Prime,17000000,3,S9 Prime,Prime pack with better odds
+57,9,Elite,29000000,3,S9 Elite,Elite pack with best odds
+58,10,Basic,8000000,3,S10 Basic,Basic pack with legendary odds
+59,10,Prime,17000000,3,S10 Prime,Prime pack with better odds
+60,10,Elite,29000000,3,S10 Elite,Elite pack with best odds
