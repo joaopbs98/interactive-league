@@ -104,14 +104,15 @@ export function ManualScheduleForm({
   const availableTeams = teams.filter((t) => !scheduledTeamIds.has(t.id));
   const teamsPerRound = competitionType === "domestic" ? teams.length : 6;
   const roundFull = scheduledTeamIds.size >= teamsPerRound;
-  const isDuplicateFixture =
+  const isDuplicateFixture = Boolean(
     homeTeamId &&
     awayTeamId &&
     matchesInRound.some(
       (m) =>
         (m.home_team_id === homeTeamId && m.away_team_id === awayTeamId) ||
         (m.home_team_id === awayTeamId && m.away_team_id === homeTeamId)
-    );
+    )
+  );
 
   return (
     <div className="space-y-3">

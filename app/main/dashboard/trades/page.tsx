@@ -135,6 +135,18 @@ export default function TradeCenterPage() {
     fetchData();
   }, [selectedLeagueId, selectedTeam]);
 
+  // --- Propose Trade Dialog State (must be before useEffect that uses proposeTo) ---
+  const [proposeOpen, setProposeOpen] = useState(false);
+  const [proposeTo, setProposeTo] = useState<string>("");
+  const [selPlayers, setSelPlayers] = useState<(string | number)[]>([]);
+  const [selDraftPicks, setSelDraftPicks] = useState<string[]>([]);
+  const [offerMoney, setOfferMoney] = useState("");
+  const [selObjectives, setSelObjectives] = useState<number[]>([]);
+  const [selRequests, setSelRequests] = useState<(string | number)[]>([]);
+  const [otherTeamSquad, setOtherTeamSquad] = useState<Player[]>([]);
+  const [playerTakeoverPct, setPlayerTakeoverPct] = useState<Record<string, number>>({});
+  const [requestFilter, setRequestFilter] = useState("");
+
   // Fetch other team's squad when proposeTo is selected
   useEffect(() => {
     if (!proposeTo || !selectedLeagueId) {
@@ -152,17 +164,6 @@ export default function TradeCenterPage() {
       })
       .catch(() => setOtherTeamSquad([]));
   }, [proposeTo, selectedLeagueId]);
-
-  // --- Propose Trade Dialog State ---
-  const [proposeOpen, setProposeOpen] = useState(false);
-  const [proposeTo, setProposeTo] = useState<string>("");
-  const [selPlayers, setSelPlayers] = useState<(string | number)[]>([]);
-  const [selDraftPicks, setSelDraftPicks] = useState<string[]>([]);
-  const [offerMoney, setOfferMoney] = useState("");
-  const [selObjectives, setSelObjectives] = useState<number[]>([]);
-  const [selRequests, setSelRequests] = useState<(string | number)[]>([]);
-  const [otherTeamSquad, setOtherTeamSquad] = useState<Player[]>([]);
-  const [playerTakeoverPct, setPlayerTakeoverPct] = useState<Record<string, number>>({});
 
   // --- View Offer Dialog State ---
   const [viewOpen, setViewOpen] = useState(false);

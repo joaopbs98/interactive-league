@@ -1233,7 +1233,7 @@ export default function HostControlsPage() {
         )}
 
         {/* Insert Result (MANUAL mode only) */}
-        {league?.match_mode === 'MANUAL' && (
+        {league?.match_mode === 'MANUAL' && leagueId && (
         <Card className="bg-neutral-900 border-neutral-800">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Play className="h-4 w-4" /> Insert Result</CardTitle>
@@ -1265,7 +1265,7 @@ export default function HostControlsPage() {
           </CardHeader>
           <CardContent>
             <CompetitionResultForm
-              leagueId={leagueId}
+              leagueId={leagueId ?? ""}
               league={league}
               teams={teams}
               onSave={performAction}
@@ -1296,7 +1296,7 @@ export default function HostControlsPage() {
             </Button>
             {(league?.unsimulated_match_count ?? 0) > 0 && (
               <p className="text-xs text-muted-foreground">
-                All matches must have results before ending the season. {league.unsimulated_match_count} match(es) still scheduled.
+                All matches must have results before ending the season. {league?.unsimulated_match_count} match(es) still scheduled.
               </p>
             )}
           </CardContent>

@@ -260,7 +260,7 @@ export default function LoansPage() {
                           <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
                           <>
-                            <DollarSign className="h-3 w-3 mr-1" /> Repay ~${(getRepayAmount(loan) / 1e6).toFixed(0)}M
+                            <DollarSign className="h-3 w-3 mr-1" /> Repay ~${((getRepayAmount(loan) ?? 0) / 1e6).toFixed(0)}M
                           </>
                         )}
                       </Button>

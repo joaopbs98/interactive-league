@@ -190,10 +190,10 @@ export default function EafcSetupTeamPage() {
     return {
       player_id: p.player_id,
       name: p.player_name,
-      full_name: p.full_name,
+      full_name: p.full_name ?? undefined,
       positions: p.positions,
       overall_rating: p.rating,
-      image: p.image,
+      image: p.image ?? undefined,
     };
   });
 

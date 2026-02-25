@@ -367,7 +367,7 @@ export async function POST(request: NextRequest) {
           years: 3,
           status: 'active',
           wage_discount_percent: 20,
-        }, { onConflict: ['team_id', 'player_id'] });
+        }, { onConflict: "team_id,player_id" });
       }
     }
 

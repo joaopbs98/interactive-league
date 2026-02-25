@@ -131,7 +131,7 @@ export default function DraftPage() {
     await handlePick();
   };
 
-  const setPickBonus = async (pickId: string, bonus: { type: string; value?: number } | null) => {
+  const setPickBonus = async (pickId: string, bonus: { type: string; value?: number; tier?: string } | null) => {
     setBonusLoading(pickId);
     setMessage(null);
     try {
