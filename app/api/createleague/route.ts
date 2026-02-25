@@ -2,177 +2,147 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
+function generateInviteCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    console.log("API route called");
-    
-    // Get the request body
     const body = await request.json();
-    console.log("Request body:", body);
-    const { name, teamName, teamAcronym, logoUrl, invites } = body;
+    const { name, teamName, teamAcronym, logoUrl, invites, maxTeams } = body;
 
-    // Validate required fields
     if (!teamName || !teamAcronym) {
-      console.log("Validation failed: missing teamName or teamAcronym");
       return NextResponse.json(
-        { error: "Team name and acronym are required" },
+        { success: false, error: "Team name and acronym are required" },
         { status: 400 }
       );
     }
 
-    console.log("Creating Supabase client...");
-    // Create Supabase client
     const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    console.log("Getting session...");
-    // Get the current session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.error("Session error:", sessionError);
+    if (authError || !user) {
       return NextResponse.json(
-        { error: "Session error: " + sessionError.message },
-        { status: 401 }
-      );
-    }
-    
-    if (!session) {
-      console.log("No session found");
-      return NextResponse.json(
-        { error: "Authentication required" },
+        { success: false, error: "Authentication required" },
         { status: 401 }
       );
     }
 
-    console.log("Session found, calling Edge Function...");
-    
-    // Try to call the Supabase Edge Function
-    try {
-      const { data, error } = await supabase.functions.invoke("createLeague", {
-        body: {
-          name: name || "My League",
-          teamName,
-          teamAcronym,
-          logoUrl,
-          invites: invites || [],
-        },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+    const serviceSupabase = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-      if (error) {
-        console.error("Supabase function error:", error);
-        throw error;
-      }
+    // Check league limit (max 2)
+    const { data: userTeams } = await serviceSupabase
+      .from("teams")
+      .select("league_id")
+      .eq("user_id", user.id);
 
-      console.log("Edge Function success:", data);
-      return NextResponse.json({
-        success: true,
-        data: data,
-        message: "League created successfully"
-      });
-    } catch (functionError: any) {
-      console.error("Edge Function failed, trying direct database approach:", functionError);
-      
-      // Create service role client to bypass RLS
-      const serviceSupabase = createServiceClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const uniqueLeagues = new Set((userTeams || []).map(t => t.league_id));
+    if (uniqueLeagues.size >= 2) {
+      return NextResponse.json(
+        { success: false, error: "You can only be in a maximum of 2 leagues" },
+        { status: 400 }
       );
-      
-      // Fallback: Create league directly in database
-      const leagueName = name && name.trim() !== "" ? name : "My League";
-      
-      // Create league
-      const { data: league, error: leagueErr } = await serviceSupabase
-        .from("leagues")
-        .insert([
-          {
-            name: leagueName,
-            season: 1,
-            commissioner_user_id: session.user.id,
-          },
-        ])
-        .select("id")
-        .single();
-        
-      if (leagueErr) {
-        console.error("League creation error:", leagueErr);
-        throw leagueErr;
-      }
+    }
 
-      // Create team
-      const initialBudget = 280_000_000;
-      const { data: team, error: teamErr } = await serviceSupabase
-        .from("teams")
-        .insert([
-          {
-            league_id: league.id,
-            user_id: session.user.id,
-            name: teamName,
-            acronym: teamAcronym,
-            logo_url: logoUrl,
-            budget: initialBudget,
-          },
-        ])
-        .select("id")
-        .single();
-        
-      if (teamErr) {
-        console.error("Team creation error:", teamErr);
-        throw teamErr;
-      }
+    const inviteCode = generateInviteCode();
+    const leagueName = name && name.trim() !== "" ? name : "My League";
+    const maxTeamsVal = [12, 16, 18, 20].includes(Number(maxTeams)) ? Number(maxTeams) : 20;
 
-      // Create initial players
-      const positions = [
-        "GK", "GK",
-        "DEF", "DEF", "DEF", "DEF", "DEF", "DEF",
-        "MID", "MID", "MID", "MID", "MID", "MID",
-        "ATT", "ATT", "ATT", "ATT",
-      ];
-      
-      const players = positions.map((pos, index) => ({
-        player_id: crypto.randomUUID(),
-        name: `Player ${index + 1}`,
-        positions: pos,
-        overall_rating: Math.floor(Math.random() * 11) + 50,
-      }));
-      
-      const { error: playersErr } = await serviceSupabase.from("player").insert(players);
-      if (playersErr) {
-        console.error("Players creation error:", playersErr);
-        throw playersErr;
-      }
+    // Create league with status and invite code
+    const { data: league, error: leagueErr } = await serviceSupabase
+      .from("leagues")
+      .insert({
+        name: leagueName,
+        season: 1,
+        commissioner_user_id: user.id,
+        status: 'PRESEASON_SETUP',
+        invite_code: inviteCode,
+        current_round: 0,
+        max_teams: maxTeamsVal,
+      })
+      .select("id")
+      .single();
 
-      // Handle invites if any
-      if (Array.isArray(invites) && invites.length > 0) {
-        for (const email of invites.filter((e: string) => e && e.trim() !== "")) {
-          await serviceSupabase.from("league_invites").insert([
-            {
-              league_id: league.id,
-              email: email.trim(),
-            },
-          ]);
-        }
-      }
+    if (leagueErr) {
+      console.error("League creation error:", leagueErr);
+      return NextResponse.json(
+        { success: false, error: "Failed to create league" },
+        { status: 500 }
+      );
+    }
 
-      console.log("Direct database approach success");
-      return NextResponse.json({
-        success: true,
-        data: {
-          leagueId: league.id,
-          teamId: team.id,
-        },
-        message: "League created successfully (direct database approach)"
+    // Create team
+    const { data: team, error: teamErr } = await serviceSupabase
+      .from("teams")
+      .insert({
+        league_id: league.id,
+        user_id: user.id,
+        name: teamName,
+        acronym: teamAcronym,
+        logo_url: logoUrl,
+        budget: 0,
+      })
+      .select("id")
+      .single();
+
+    if (teamErr) {
+      console.error("Team creation error:", teamErr);
+      return NextResponse.json(
+        { success: false, error: "Failed to create team" },
+        { status: 500 }
+      );
+    }
+
+    // Auto-generate starter squad (18 players from player table -> league_players, contracts, initial budget via ledger)
+    const { data: squadResult, error: squadErr } = await serviceSupabase.rpc('auto_starter_squad', {
+      p_team_id: team.id,
+      p_league_id: league.id,
+      p_season: 1
+    });
+
+    if (squadErr) {
+      console.error("Starter squad generation error:", squadErr);
+      // Ensure initial budget even if squad fails (user can use Host Controls to generate later)
+      await serviceSupabase.rpc('write_finance_entry', {
+        p_team_id: team.id,
+        p_league_id: league.id,
+        p_amount: 250000000,
+        p_reason: 'Initial Budget',
+        p_description: 'Starting budget (squad generation failed)',
+        p_season: 1,
       });
     }
 
+    // Audit log
+    await serviceSupabase.rpc('write_audit_log', {
+      p_league_id: league.id,
+      p_action: 'create_league',
+      p_actor_id: user.id,
+      p_payload: { league_name: leagueName, team_name: teamName, invite_code: inviteCode }
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        leagueId: league.id,
+        teamId: team.id,
+        inviteCode: inviteCode,
+        squadResult: squadResult,
+      },
+    });
   } catch (error: any) {
-    console.error("API route error:", error);
+    console.error("CreateLeague error:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { success: false, error: error.message || "Internal server error" },
       { status: 500 }
     );
   }
-} 
+}

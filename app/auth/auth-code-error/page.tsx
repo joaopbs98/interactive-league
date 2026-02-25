@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-const AuthCodeErrorPage: React.FC = () => {
+function AuthCodeErrorContent() {
   const searchParams = useSearchParams();
   const [errorDetails, setErrorDetails] = useState<any>({});
 
@@ -126,4 +126,10 @@ const AuthCodeErrorPage: React.FC = () => {
   );
 };
 
-export default AuthCodeErrorPage; 
+export default function AuthCodeErrorPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>}>
+      <AuthCodeErrorContent />
+    </Suspense>
+  );
+} 
