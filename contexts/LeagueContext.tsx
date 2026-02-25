@@ -73,7 +73,7 @@ export const LeagueProvider: React.FC<LeagueProviderProps> = ({ children }) => {
               .from('teams')
               .select(`
                 *,
-                leagues (*)
+                leagues!teams_league_id_fkey (*)
               `)
               .eq('id', parsedTeam.id)
               .single();
@@ -141,7 +141,7 @@ export const LeagueProvider: React.FC<LeagueProviderProps> = ({ children }) => {
     try {
       const { data: completeTeam, error } = await supabase
         .from('teams')
-        .select(`*, leagues (*)`)
+        .select(`*, leagues!teams_league_id_fkey (*)`)
         .eq('id', selectedTeam.id)
         .single();
       if (completeTeam && !error) {

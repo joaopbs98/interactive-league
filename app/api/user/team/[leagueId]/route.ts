@@ -100,7 +100,7 @@ export async function GET(
         reserves,
         eafc_tactic_code,
         eafc_comment,
-        leagues(
+        leagues!teams_league_id_fkey(
           id,
           name,
           season,
@@ -199,7 +199,7 @@ export async function GET(
         const { data: anyTeamInLeague, error: anyTeamErr } = await supabase
           .from("teams")
           .select(`
-            leagues!inner(
+            leagues!teams_league_id_fkey(
               id,
               name,
               season,
@@ -299,7 +299,7 @@ export async function GET(
           reserves,
           eafc_tactic_code,
           eafc_comment,
-          leagues(
+          leagues!teams_league_id_fkey(
             id,
             name,
             season,
@@ -380,7 +380,7 @@ export async function GET(
         const { data: serviceLeagueInfo, error: serviceLeagueErr } = await serviceSupabase
           .from("teams")
           .select(`
-            leagues!inner(
+            leagues!teams_league_id_fkey(
               id,
               name,
               season,

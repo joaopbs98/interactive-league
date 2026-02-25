@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
         logo_url,
         league_id,
         user_id,
-        leagues!inner(
+        leagues!teams_league_id_fkey(
           id,
           name,
           season,
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
         logo_url,
         league_id,
         user_id,
-        leagues!inner(
+        leagues!teams_league_id_fkey(
           id,
           name,
           season,

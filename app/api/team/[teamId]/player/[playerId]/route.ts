@@ -21,7 +21,7 @@ export async function GET(
     // Verify team ownership and fetch IL team + league info
     const { data: team, error: teamError } = await supabase
       .from("teams")
-      .select("id, name, acronym, user_id, league_id, expendables, leagues(id, name, season)")
+      .select("id, name, acronym, user_id, league_id, expendables, leagues!teams_league_id_fkey(id, name, season)")
       .eq("id", teamId)
       .single();
 

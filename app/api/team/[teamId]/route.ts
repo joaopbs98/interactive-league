@@ -43,7 +43,7 @@ export async function GET(
         budget,
         league_id,
         squad,
-        leagues!inner(
+        leagues!teams_league_id_fkey(
           id,
           name,
           season
