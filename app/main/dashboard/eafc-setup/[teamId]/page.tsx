@@ -19,6 +19,7 @@ import {
   Gamepad2,
 } from "lucide-react";
 import { getRatingColorClasses } from "@/utils/ratingColors";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type SquadPlayer = {
   id: string;
@@ -139,8 +140,8 @@ export default function EafcSetupTeamPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
       </div>
     );
   }

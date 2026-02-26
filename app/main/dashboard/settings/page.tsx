@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useLeague } from "@/contexts/LeagueContext";
 import { Loader2, User, Trophy, Users, LogOut, Trash2 } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
 
@@ -97,8 +98,8 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
       </div>
     );
   }

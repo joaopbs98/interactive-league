@@ -42,7 +42,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch trades" }, { status: 500 });
     }
 
-    return NextResponse.json({ trades: trades || [] });
+    const list = trades || [];
+    const pendingCount = list.filter(
+      (t: { to_team_id: string; status: string }) =>
+        t.to_team_id === teamId && t.status === "pending"
+    ).length;
+
+    return NextResponse.json({ trades: list, pendingCount });
 
   } catch (error: any) {
     console.error('Trades API error:', error);
@@ -177,6 +183,7 @@ export async function POST(request: NextRequest) {
         title: 'New trade proposal',
         message: `${fromTeam?.name || 'A team'} has sent you a trade proposal.`,
         read: false,
+        link: '/main/dashboard/trades',
       });
     }
 

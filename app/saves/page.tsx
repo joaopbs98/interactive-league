@@ -13,9 +13,11 @@ interface League {
   id: string;
   name: string;
   season: number;
+  status?: string;
   team_count: number;
   commissioner_user_id: string;
   created_at: string;
+  updated_at?: string;
   my_team?: {
     id: string;
     name: string;
@@ -218,9 +220,16 @@ const SavesPage: React.FC = () => {
                     <CardTitle className="text-xl text-white">{league.name}</CardTitle>
                     <p className="text-gray-400">Season {league.season}</p>
                   </div>
-                  <Badge variant="secondary" className="bg-neutral-800 text-gray-300">
-                    {league.team_count}/20 teams
-                  </Badge>
+                  <div className="flex flex-col gap-1 items-end">
+                    {league.status && (
+                      <Badge variant="outline" className="text-xs">
+                        {league.status.replace(/_/g, " ")}
+                      </Badge>
+                    )}
+                    <Badge variant="secondary" className="bg-neutral-800 text-gray-300">
+                      {league.team_count}/20 teams
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>

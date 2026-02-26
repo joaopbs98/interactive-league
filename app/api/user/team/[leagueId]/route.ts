@@ -94,6 +94,7 @@ export async function GET(
         comp_index,
         stock_value,
         sponsor_id,
+        sponsor_contract_ends_season,
         formation,
         starting_lineup,
         bench,
@@ -1087,8 +1088,26 @@ async function fetchDashboardData(supabase: any, leagueId: string, teamId: strin
       }
     }
 
-    // Check if sponsor is expiring (mock logic for now)
-    const sponsorExpiring = false; // TODO: Implement real sponsor expiration check
+    // Check if sponsor is expiring (2-season contract)
+    let sponsorExpiring = false;
+    const { data: teamRow } = await supabase
+      .from("teams")
+      .select("sponsor_id, sponsor_signed_at_season")
+      .eq("id", teamId)
+      .single();
+    const { data: leagueRow } = await supabase
+      .from("leagues")
+      .select("season")
+      .eq("id", leagueId)
+      .single();
+    if (
+      teamRow?.sponsor_id &&
+      teamRow.sponsor_signed_at_season != null &&
+      leagueRow?.season != null &&
+      leagueRow.season === teamRow.sponsor_signed_at_season + 1
+    ) {
+      sponsorExpiring = true;
+    }
 
     // Get upcoming events (mock data for now)
     const upcomingEvents = [

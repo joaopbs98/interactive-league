@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       .eq("league_id", leagueId);
     const teamIds = new Set((leagueTeams || []).map((t) => t.id));
 
-    const compType = ["domestic", "ucl", "uel", "uecl"].includes(competitionType) ? competitionType : "domestic";
+    const compType = ["domestic", "ucl", "uel", "uecl", "supercup"].includes(competitionType) ? competitionType : "domestic";
 
     const toInsert: { round: number; home_team_id: string; away_team_id: string; group_name?: string }[] = [];
 

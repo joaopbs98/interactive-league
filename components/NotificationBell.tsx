@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { Bell } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLeague } from "@/contexts/LeagueContext";
 import { useRefresh } from "@/contexts/RefreshContext";
 import {
@@ -22,6 +24,7 @@ type Notification = {
   message: string | null;
   read: boolean;
   created_at: string;
+  link?: string | null;
 };
 
 export function NotificationBell() {
@@ -54,8 +57,33 @@ export function NotificationBell() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 60000);
-    return () => clearInterval(interval);
+    const visibleInterval = 30000;
+    const hiddenInterval = 60000;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const schedulePoll = () => {
+      if (intervalId) clearInterval(intervalId);
+      const ms = typeof document !== "undefined" && document.visibilityState === "visible"
+        ? visibleInterval
+        : hiddenInterval;
+      intervalId = setInterval(fetchNotifications, ms);
+    };
+
+    schedulePoll();
+    const handleVisibility = () => {
+      fetchNotifications();
+      schedulePoll();
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
   }, [selectedLeagueId, refreshKey]);
 
   useEffect(() => {
@@ -90,6 +118,36 @@ export function NotificationBell() {
     } catch {
       // ignore
     }
+  };
+
+  const groupedByType = useMemo(() => {
+    const groups: Record<string, Notification[]> = {};
+    for (const n of notifications) {
+      const key = n.type || "other";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(n);
+    }
+    const order = ["trade", "matchday", "registration", "draft", "auction", "other"];
+    const sorted: { type: string; items: Notification[] }[] = [];
+    for (const t of order) {
+      if (groups[t]?.length) sorted.push({ type: t, items: groups[t] });
+    }
+    for (const t of Object.keys(groups)) {
+      if (!order.includes(t)) sorted.push({ type: t, items: groups[t] });
+    }
+    return sorted;
+  }, [notifications]);
+
+  const typeLabel = (t: string) => {
+    const labels: Record<string, string> = {
+      trade: "Trades",
+      matchday: "Matchday",
+      registration: "Registration",
+      draft: "Draft",
+      auction: "Auctions",
+      other: "Other",
+    };
+    return labels[t] || t.charAt(0).toUpperCase() + t.slice(1);
   };
 
   const formatTime = (dateStr: string) => {
@@ -128,33 +186,75 @@ export function NotificationBell() {
         </div>
         <ScrollArea className="h-[280px]">
           {loading ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              Loading...
+            <div className="p-4 space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-3">
+                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : notifications.length === 0 ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              No notifications
+            <div className="p-6 text-center">
+              <Bell className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
+              <p className="text-sm font-medium text-muted-foreground">No notifications</p>
+              <p className="text-xs text-muted-foreground mt-1">You&apos;ll see trades, matchday updates, and more here.</p>
+              <div className="mt-3 flex flex-wrap gap-2 justify-center">
+                <Link href="/main/dashboard/trades" className="text-xs text-primary hover:underline">Trades</Link>
+                <span className="text-muted-foreground">·</span>
+                <Link href="/main/dashboard/schedule" className="text-xs text-primary hover:underline">Schedule</Link>
+              </div>
             </div>
           ) : (
             <div className="py-1">
-              {notifications.map((n) => (
-                <DropdownMenuItem
-                  key={n.id}
-                  className={`flex flex-col items-start gap-0.5 cursor-pointer py-3 ${!n.read ? "bg-muted/50" : ""}`}
-                  onClick={() => !n.read && handleMarkRead(n.id)}
-                >
-                  <div className="flex w-full justify-between gap-2">
-                    <span className="font-medium text-sm">{n.title}</span>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {formatTime(n.created_at)}
-                    </span>
-                  </div>
-                  {n.message && (
-                    <span className="text-xs text-muted-foreground line-clamp-2">
-                      {n.message}
-                    </span>
-                  )}
-                </DropdownMenuItem>
+              {groupedByType.map(({ type, items }) => (
+                <div key={type} className="py-1">
+                  <p className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {typeLabel(type)}
+                  </p>
+                  {items.map((n) => {
+                const content = (
+                  <>
+                    <div className="flex w-full justify-between gap-2">
+                      <span className="font-medium text-sm">{n.title}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {formatTime(n.created_at)}
+                      </span>
+                    </div>
+                    {n.message && (
+                      <span className="text-xs text-muted-foreground line-clamp-2">
+                        {n.message}
+                      </span>
+                    )}
+                  </>
+                );
+                return n.link ? (
+                  <DropdownMenuItem key={n.id} asChild>
+                    <Link
+                      href={n.link}
+                      className={`flex flex-col items-start gap-0.5 cursor-pointer py-3 ${!n.read ? "bg-muted/50" : ""}`}
+                      onClick={() => {
+                        setOpen(false);
+                        if (!n.read) handleMarkRead(n.id);
+                      }}
+                    >
+                      {content}
+                    </Link>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    key={n.id}
+                    className={`flex flex-col items-start gap-0.5 cursor-pointer py-3 ${!n.read ? "bg-muted/50" : ""}`}
+                    onClick={() => !n.read && handleMarkRead(n.id)}
+                  >
+                    {content}
+                  </DropdownMenuItem>
+                );
+              })}
+                </div>
               ))}
             </div>
           )}

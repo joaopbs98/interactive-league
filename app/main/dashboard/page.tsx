@@ -9,8 +9,9 @@ import { useLeague } from "@/contexts/LeagueContext";
 import { useRefresh } from "@/contexts/RefreshContext";
 import {
   Trophy, Users, Calendar, DollarSign, Shield, Swords,
-  TrendingUp, AlertTriangle, Loader2, ArrowRight, Star
+  TrendingUp, AlertTriangle, ArrowRight, Star, Bell, CheckCircle
 } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import Link from "next/link";
 
 type Standing = {
@@ -41,6 +42,7 @@ type LeagueInfo = {
   total_rounds: number;
   invite_code: string;
   name: string;
+  transfer_window_open?: boolean;
 };
 
 export default function DashboardPage() {
@@ -54,6 +56,11 @@ export default function DashboardPage() {
   const [leagueInfo, setLeagueInfo] = useState<LeagueInfo | null>(null);
   const [rosterCount, setRosterCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [pendingTradesCount, setPendingTradesCount] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [hasRegistrationAlert, setHasRegistrationAlert] = useState(false);
+  const [canPickSponsor, setCanPickSponsor] = useState(false);
+  const [hasContractsEnding, setHasContractsEnding] = useState(false);
 
   const leagueId = selectedLeagueId;
   const team = selectedTeam;
@@ -72,7 +79,7 @@ export default function DashboardPage() {
         const res = await fetch(`/api/balance?teamId=${selectedTeam.id}`);
         if (res.ok) {
           const data = await res.json();
-          setBalance(data.data?.availableBalance ?? selectedTeam.budget ?? 0);
+          setBalance(data.data?.totalBudget ?? data.data?.availableBalance ?? selectedTeam.budget ?? 0);
         } else {
           setBalance(selectedTeam.budget ?? 0);
         }
@@ -92,6 +99,38 @@ export default function DashboardPage() {
     ]);
     setLoading(false);
   };
+
+  useEffect(() => {
+    if (!selectedTeam?.id || !selectedLeagueId) return;
+    const fetchActions = async () => {
+      try {
+        const [tradesRes, notifRes] = await Promise.all([
+          fetch(`/api/trades?teamId=${selectedTeam.id}`),
+          fetch(`/api/notifications?leagueId=${selectedLeagueId}`),
+        ]);
+        if (tradesRes.ok) {
+          const td = await tradesRes.json();
+          setPendingTradesCount(td.pendingCount ?? 0);
+        }
+        if (notifRes.ok) {
+          const nd = await notifRes.json();
+          setUnreadNotifications(nd.unreadCount ?? 0);
+          const notifs = nd.notifications || [];
+          setHasRegistrationAlert(notifs.some((n: { type: string }) => n.type === "registration_required"));
+          setHasContractsEnding(notifs.some((n: { type: string }) => n.type === "contract_ending"));
+        }
+      } catch {}
+    };
+    fetchActions();
+  }, [selectedTeam?.id, selectedLeagueId, refreshKey]);
+
+  useEffect(() => {
+    if (leagueInfo?.status === "OFFSEASON" && leagueInfo?.season && !selectedTeam?.sponsor_id) {
+      setCanPickSponsor([2, 5, 7, 9].includes(leagueInfo.season));
+    } else {
+      setCanPickSponsor(false);
+    }
+  }, [leagueInfo?.status, leagueInfo?.season, selectedTeam?.sponsor_id]);
 
   const fetchLeagueInfo = async () => {
     try {
@@ -132,6 +171,30 @@ export default function DashboardPage() {
   const myPosition = standings.findIndex(s => s.team_id === team?.id) + 1;
   const myStanding = standings.find(s => s.team_id === team?.id);
 
+  const nextMatch = team?.id
+    ? nextMatches.find((m) => m.home_team?.id === team.id || m.away_team?.id === team.id)
+    : null;
+  const getMatchResult = (m: Match) => {
+    if (m.match_status !== "simulated" || m.home_score == null || m.away_score == null) return null;
+    const isHome = m.home_team?.id === team?.id;
+    const our = isHome ? m.home_score : m.away_score;
+    const opp = isHome ? m.away_score : m.home_score;
+    if (our > opp) return "W";
+    if (our < opp) return "L";
+    return "D";
+  };
+
+  const phaseHint =
+    leagueInfo?.status === "OFFSEASON"
+      ? "Pick a sponsor and prepare for next season."
+      : leagueInfo?.status === "IN_SEASON" && leagueInfo?.transfer_window_open
+        ? "Transfer window is open — buy, sell, or trade."
+        : leagueInfo?.status === "IN_SEASON" && !leagueInfo?.transfer_window_open
+          ? "Transfer window is closed."
+          : leagueInfo?.status === "PRESEASON_SETUP"
+            ? "Register your squad (21–23 players) before the season starts."
+            : null;
+
   const statusColor: Record<string, string> = {
     PRESEASON_SETUP: 'bg-blue-600',
     IN_SEASON: 'bg-green-600',
@@ -141,8 +204,8 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-6">
+        <PageSkeleton variant="page" rows={4} />
       </div>
     );
   }
@@ -172,6 +235,78 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Phase-aware hint */}
+      {phaseHint && (
+        <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-800/50 text-sm text-blue-200">
+          {phaseHint}
+        </div>
+      )}
+
+      {/* Next actions */}
+      {(hasRegistrationAlert || pendingTradesCount > 0 || unreadNotifications > 0 || canPickSponsor || hasContractsEnding) && (
+        <Card className="bg-neutral-900 border-neutral-800 border-l-4 border-l-amber-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CheckCircle className="h-4 w-4" /> Next actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {hasRegistrationAlert && (
+              <Link href="/main/dashboard/squad">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3" /> Register squad (21–23 players)
+                </Button>
+              </Link>
+            )}
+            {canPickSponsor && (
+              <Link href="/main/dashboard/sponsors">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <DollarSign className="h-3.5 w-3" /> Sign a sponsor
+                </Button>
+              </Link>
+            )}
+            {hasContractsEnding && (
+              <Link href="/main/dashboard/contracts">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3" /> Contracts ending soon
+                </Button>
+              </Link>
+            )}
+            {pendingTradesCount > 0 && (
+              <Link href="/main/dashboard/trades">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Swords className="h-3.5 w-3" /> {pendingTradesCount} pending trade{pendingTradesCount !== 1 ? "s" : ""}
+                </Button>
+              </Link>
+            )}
+            {unreadNotifications > 0 && (
+              <Link href="/main/dashboard">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Bell className="h-3.5 w-3" /> {unreadNotifications} notification{unreadNotifications !== 1 ? "s" : ""}
+                </Button>
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Your next match */}
+      {nextMatch && team && (
+        <Card className="bg-neutral-900 border-neutral-800 border-l-4 border-l-blue-500">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Your next match</p>
+              <p className="font-semibold">
+                vs {nextMatch.home_team?.id === team.id ? nextMatch.away_team?.name : nextMatch.home_team?.name} — Round {nextMatch.round}
+              </p>
+            </div>
+            <Link href="/main/dashboard/schedule">
+              <Button variant="outline" size="sm">View Schedule</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -334,13 +469,29 @@ export default function DashboardPage() {
               <p className="text-sm text-muted-foreground text-center py-4">No matches played yet</p>
             ) : (
               <div className="space-y-2">
-                {recentMatches.slice(-4).map(m => (
-                  <div key={m.id} className="flex items-center justify-between p-2 rounded bg-neutral-800/30 text-sm">
-                    <span className="flex-1 text-right text-xs truncate">{m.home_team?.acronym || '?'}</span>
-                    <span className="mx-3 font-bold">{m.home_score} - {m.away_score}</span>
-                    <span className="flex-1 text-left text-xs truncate">{m.away_team?.acronym || '?'}</span>
-                  </div>
-                ))}
+                {recentMatches.slice(-4).map(m => {
+                  const result = getMatchResult(m);
+                  const scoreStr = m.match_status === "simulated" && m.home_score != null && m.away_score != null
+                    ? `${m.home_score}-${m.away_score}`
+                    : "—";
+                  return (
+                    <div key={m.id} className="flex items-center justify-between p-2 rounded bg-neutral-800/30 text-sm">
+                      <span className="flex-1 text-right text-xs truncate">{m.home_team?.acronym || "?"}</span>
+                      <span className="mx-3 font-bold">
+                        {scoreStr}
+                        {result && (
+                          <Badge
+                            variant={result === "W" ? "default" : result === "L" ? "destructive" : "secondary"}
+                            className="ml-1.5 text-[10px]"
+                          >
+                            {result}
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="flex-1 text-left text-xs truncate">{m.away_team?.acronym || "?"}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>

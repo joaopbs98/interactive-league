@@ -5,7 +5,9 @@ import { useLeague } from "@/contexts/LeagueContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, Play, ArrowLeft, Check } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
@@ -29,12 +31,18 @@ type LeagueInfo = {
   status: string;
   current_round: number;
   total_rounds: number;
+  current_round_ucl?: number;
+  current_round_uel?: number;
+  current_round_uecl?: number;
   match_mode?: "SIMULATED" | "MANUAL";
 };
+
+type CompetitionType = "domestic" | "ucl" | "uel" | "uecl" | "supercup";
 
 export default function InsertResultsPage() {
   const { selectedLeagueId, selectedTeam } = useLeague();
   const [league, setLeague] = useState<LeagueInfo | null>(null);
+  const [competitionType, setCompetitionType] = useState<CompetitionType>("domestic");
   const [scheduledMatches, setScheduledMatches] = useState<MatchRow[]>([]);
   const [selMatchId, setSelMatchId] = useState<string>("");
   const [homeScore, setHomeScore] = useState("");
@@ -59,9 +67,18 @@ export default function InsertResultsPage() {
         const leagueInfo = leagueData.success ? leagueData.data : null;
         if (leagueInfo) setLeague(leagueInfo);
 
-        const round = leagueInfo?.current_round ?? 1;
+        const round =
+          competitionType === "domestic"
+            ? Math.max(1, leagueInfo?.current_round ?? 1)
+            : competitionType === "ucl"
+              ? Math.max(1, leagueInfo?.current_round_ucl ?? 1)
+              : competitionType === "uel"
+                ? Math.max(1, leagueInfo?.current_round_uel ?? 1)
+                : competitionType === "uecl"
+                  ? Math.max(1, leagueInfo?.current_round_uecl ?? 1)
+                  : 1; /* supercup always round 1 */
         const scheduleRes = await fetch(
-          `/api/league/game?leagueId=${leagueId}&type=schedule&season=${leagueInfo?.season ?? 1}&round=${round}`
+          `/api/league/game?leagueId=${leagueId}&type=schedule&season=${leagueInfo?.season ?? 1}&round=${round}&competition_type=${competitionType}`
         );
         const scheduleData = await scheduleRes.json();
 
@@ -81,9 +98,27 @@ export default function InsertResultsPage() {
       }
     };
     fetchData();
-  }, [leagueId, isHost, refreshKey]);
+  }, [leagueId, isHost, refreshKey, competitionType]);
 
   const selectedMatch = scheduledMatches.find((m) => m.id === selMatchId);
+
+  const currentRound =
+    competitionType === "domestic"
+      ? Math.max(1, league?.current_round ?? 1)
+      : competitionType === "ucl"
+        ? Math.max(1, league?.current_round_ucl ?? 1)
+        : competitionType === "uel"
+          ? Math.max(1, league?.current_round_uel ?? 1)
+          : competitionType === "uecl"
+            ? Math.max(1, league?.current_round_uecl ?? 1)
+            : 1; /* supercup */
+
+  const roundLabel =
+    competitionType === "domestic"
+      ? `Round ${currentRound} of ${league?.total_rounds ?? "?"}`
+      : competitionType === "supercup"
+        ? "Super Cup"
+        : `${competitionType.toUpperCase()} Matchday ${currentRound}`;
 
   const handleInsert = async () => {
     const h = parseInt(homeScore, 10);
@@ -178,8 +213,8 @@ export default function InsertResultsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
       </div>
     );
   }
@@ -193,7 +228,7 @@ export default function InsertResultsPage() {
             <Play className="h-7 w-7" /> Insert Match Results
           </h1>
           <p className="text-muted-foreground mt-1">
-            Round {league?.current_round ?? "?"} of {league?.total_rounds ?? "?"} · {league?.name || selectedTeam?.leagues?.name || "League"}
+            {roundLabel} · {league?.name || selectedTeam?.leagues?.name || "League"}
           </p>
         </div>
         <Link href="/main/dashboard/host-controls">
@@ -203,114 +238,83 @@ export default function InsertResultsPage() {
         </Link>
       </div>
 
-      {scheduledMatches.length === 0 ? (
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center">
-            <p className="text-muted-foreground">
-              No scheduled matches in round {league?.current_round}. Generate schedule first or all results may be entered.
-            </p>
-            <Link href="/main/dashboard/host-controls">
-              <Button variant="outline" className="mt-4">Host Controls</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Match list */}
-          <Card className="bg-neutral-900 border-neutral-800 lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="text-base">Matches</CardTitle>
-              <CardDescription>
-                {scheduledMatches.length} match(es) in this round
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {scheduledMatches.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => {
-                      setSelMatchId(m.id);
-                      setHomeScore("");
-                      setAwayScore("");
-                    }}
-                    className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                      selMatchId === m.id
-                        ? "border-primary bg-primary/10"
-                        : "border-neutral-700 hover:border-neutral-600"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium truncate">
-                        {m.home_team?.name ?? "Home"} vs {m.away_team?.name ?? "Away"}
-                      </span>
-                      {m.match_status !== "scheduled" && (
-                        <Check className="h-4 w-4 text-green-500 shrink-0" />
-                      )}
+      <Tabs value={competitionType} onValueChange={(v) => setCompetitionType(v as CompetitionType)}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="domestic">Domestic</TabsTrigger>
+          <TabsTrigger value="ucl">UCL</TabsTrigger>
+          <TabsTrigger value="uel">UEL</TabsTrigger>
+          <TabsTrigger value="uecl">UECL</TabsTrigger>
+          <TabsTrigger value="supercup">Super Cup</TabsTrigger>
+        </TabsList>
+        {(["domestic", "ucl", "uel", "uecl", "supercup"] as const).map((comp) => (
+          <TabsContent key={comp} value={comp} className="mt-0">
+            {scheduledMatches.length === 0 ? (
+              <Card className="bg-neutral-900 border-neutral-800">
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground">
+                    No scheduled matches in {comp === "domestic" ? "domestic" : comp === "supercup" ? "Super Cup" : comp.toUpperCase()} round {currentRound}. Generate schedule first or all results may be entered.
+                  </p>
+                  <Link href="/main/dashboard/host-controls">
+                    <Button variant="outline" className="mt-4">Host Controls</Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Card className="bg-neutral-900 border-neutral-800 lg:col-span-1">
+                  <CardHeader>
+                    <CardTitle className="text-base">Matches</CardTitle>
+                    <CardDescription>{scheduledMatches.length} match(es) in this round</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {scheduledMatches.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => { setSelMatchId(m.id); setHomeScore(""); setAwayScore(""); }}
+                          className={`w-full text-left p-3 rounded-lg border transition-colors ${selMatchId === m.id ? "border-primary bg-primary/10" : "border-neutral-700 hover:border-neutral-600"}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium truncate">{m.home_team?.name ?? "Home"} vs {m.away_team?.name ?? "Away"}</span>
+                            {m.match_status !== "scheduled" && <Check className="h-4 w-4 text-green-500 shrink-0" />}
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Right: Score entry */}
-          <Card className="bg-neutral-900 border-neutral-800 lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base">Enter Result</CardTitle>
-              <CardDescription>
-                {selectedMatch
-                  ? `${selectedMatch.home_team?.name ?? "Home"} vs ${selectedMatch.away_team?.name ?? "Away"}`
-                  : "Select a match"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {selectedMatch && (
-                <>
-                  <div className="flex items-center justify-center gap-8">
-                    <div className="flex flex-col items-center gap-2">
-                      <span className="text-lg font-medium">{selectedMatch.home_team?.name ?? "Home"}</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        placeholder="0"
-                        value={homeScore}
-                        onChange={(e) => setHomeScore(e.target.value)}
-                        className="w-24 h-16 text-center text-2xl"
-                      />
-                    </div>
-                    <span className="text-2xl text-muted-foreground">–</span>
-                    <div className="flex flex-col items-center gap-2">
-                      <span className="text-lg font-medium">{selectedMatch.away_team?.name ?? "Away"}</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        placeholder="0"
-                        value={awayScore}
-                        onChange={(e) => setAwayScore(e.target.value)}
-                        className="w-24 h-16 text-center text-2xl"
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleInsert}
-                    disabled={actionLoading || homeScore === "" || awayScore === ""}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Play className="h-4 w-4 mr-2" />
+                  </CardContent>
+                </Card>
+                <Card className="bg-neutral-900 border-neutral-800 lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="text-base">Enter Result</CardTitle>
+                    <CardDescription>{selectedMatch ? `${selectedMatch.home_team?.name ?? "Home"} vs ${selectedMatch.away_team?.name ?? "Away"}` : "Select a match"}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {selectedMatch && (
+                      <>
+                        <div className="flex items-center justify-center gap-8">
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-lg font-medium">{selectedMatch.home_team?.name ?? "Home"}</span>
+                            <Input type="number" min={0} placeholder="0" value={homeScore} onChange={(e) => setHomeScore(e.target.value)} className="w-24 h-16 text-center text-2xl" />
+                          </div>
+                          <span className="text-2xl text-muted-foreground">–</span>
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-lg font-medium">{selectedMatch.away_team?.name ?? "Away"}</span>
+                            <Input type="number" min={0} placeholder="0" value={awayScore} onChange={(e) => setAwayScore(e.target.value)} className="w-24 h-16 text-center text-2xl" />
+                          </div>
+                        </div>
+                        <Button onClick={handleInsert} disabled={actionLoading || homeScore === "" || awayScore === ""} className="w-full" size="lg">
+                          {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+                          Save Result
+                        </Button>
+                      </>
                     )}
-                    Save Result
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }

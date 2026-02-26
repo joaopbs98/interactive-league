@@ -16,6 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLeague } from "@/contexts/LeagueContext";
 import { Loader2, AlertTriangle } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { getRatingColors } from "@/utils/ratingColors";
 
 type DraftPick = {
@@ -160,8 +161,8 @@ export default function DraftPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={8} />
       </div>
     );
   }
@@ -185,8 +186,8 @@ export default function DraftPage() {
         <Card className="bg-neutral-900 border-neutral-800">
           <CardContent className="p-8 text-center text-muted-foreground">
             <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>Draft has not started yet. The host must start the draft from Host Controls.</p>
-            <p className="mt-2 text-sm">Draft is available from Season 2 onward, during OFFSEASON.</p>
+            <p className="text-lg font-medium mb-2">No draft in progress.</p>
+            <p className="text-sm">The host must start the draft from Host Controls. Draft is available from Season 2 onward, during OFFSEASON.</p>
           </CardContent>
         </Card>
       </div>

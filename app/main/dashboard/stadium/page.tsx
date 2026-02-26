@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Loader2, Building2 } from "lucide-react";
+import { Building2 } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import {
   Select,
   SelectContent,
@@ -37,6 +38,7 @@ export default function StadiumPage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const isHost = selectedTeam?.leagues?.is_host ?? (selectedTeam?.leagues?.commissioner_user_id === selectedTeam?.user_id);
+  const isOwner = !!selectedTeam?.id; // User viewing their own team
 
   useEffect(() => {
     if (selectedLeagueId && selectedTeam?.id) fetchStadium();
@@ -87,8 +89,8 @@ export default function StadiumPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="cards" rows={4} />
       </div>
     );
   }
@@ -154,67 +156,75 @@ export default function StadiumPage() {
                 </div>
               </div>
 
-              {isHost && (
+              {(isOwner || isHost) && (
                 <div className="space-y-4 pt-4 border-t border-neutral-800">
-                  <div>
-                    <Label>Visitor Focus</Label>
-                    <Select
-                      value={data.visitor_focus || ""}
-                      onValueChange={(v) => handleUpdate({ visitor_focus: v })}
-                      disabled={saving || data.confirm_vf}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VISITOR_FOCUS_OPTIONS.map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {opt}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {data.confirm_vf && (
-                      <p className="text-xs text-muted-foreground mt-1">Locked (confirmed)</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="confirm_vf"
-                      checked={data.confirm_vf}
-                      onCheckedChange={(c) => handleUpdate({ confirm_vf: !!c })}
-                      disabled={saving}
-                    />
-                    <Label htmlFor="confirm_vf">Confirm V.F.</Label>
-                  </div>
-                  <div>
-                    <Label>Seasonal Performance</Label>
-                    <Select
-                      value={data.seasonal_performance || ""}
-                      onValueChange={(v) => handleUpdate({ seasonal_performance: v })}
-                      disabled={saving}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SEASONAL_PERFORMANCE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {opt}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="sc_appearance"
-                      checked={data.sc_appearance}
-                      onCheckedChange={(c) => handleUpdate({ sc_appearance: !!c })}
-                      disabled={saving}
-                    />
-                    <Label htmlFor="sc_appearance">SC Appearance</Label>
-                  </div>
+                  {isOwner && (
+                    <>
+                      <div>
+                        <Label>Visitor Focus</Label>
+                        <Select
+                          value={data.visitor_focus || ""}
+                          onValueChange={(v) => handleUpdate({ visitor_focus: v })}
+                          disabled={saving || data.confirm_vf}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {VISITOR_FOCUS_OPTIONS.map((opt) => (
+                              <SelectItem key={opt} value={opt}>
+                                {opt}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {data.confirm_vf && (
+                          <p className="text-xs text-muted-foreground mt-1">Locked (confirmed)</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="confirm_vf"
+                          checked={data.confirm_vf}
+                          onCheckedChange={(c) => handleUpdate({ confirm_vf: !!c })}
+                          disabled={saving}
+                        />
+                        <Label htmlFor="confirm_vf">Confirm V.F.</Label>
+                      </div>
+                    </>
+                  )}
+                  {isHost && (
+                    <>
+                      <div>
+                        <Label>Seasonal Performance</Label>
+                        <Select
+                          value={data.seasonal_performance || ""}
+                          onValueChange={(v) => handleUpdate({ seasonal_performance: v })}
+                          disabled={saving}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SEASONAL_PERFORMANCE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt} value={opt}>
+                                {opt}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="sc_appearance"
+                          checked={data.sc_appearance}
+                          onCheckedChange={(c) => handleUpdate({ sc_appearance: !!c })}
+                          disabled={saving}
+                        />
+                        <Label htmlFor="sc_appearance">SC Appearance</Label>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </CardContent>

@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Loader2, ArrowUpRight, ArrowDownRight, DollarSign, TrendingDown } from "lucide-react";
+import { useRefresh } from "@/contexts/RefreshContext";
+import { Loader2, ArrowUpRight, ArrowDownRight, DollarSign, TrendingDown, Search } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { toast } from "sonner";
 
 type Transaction = {
@@ -27,20 +37,27 @@ type TeamFinances = {
 
 export default function TransactionsPage() {
   const { selectedTeam } = useLeague();
+  const { triggerRefresh } = useRefresh();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [teamFinances, setTeamFinances] = useState<TeamFinances | null>(null);
   const [loading, setLoading] = useState(true);
   const [sellPct, setSellPct] = useState("");
   const [selling, setSelling] = useState(false);
+  const [seasonFilter, setSeasonFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [reasonFilter, setReasonFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    if (selectedTeam?.id) fetchTransactions();
-  }, [selectedTeam]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
+    if (!selectedTeam?.id) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/team/${selectedTeam!.id}/finances`);
+      const params = new URLSearchParams();
+      if (seasonFilter !== "all") params.set("season", seasonFilter);
+      if (typeFilter !== "all") params.set("type", typeFilter);
+      if (reasonFilter !== "all") params.set("reason", reasonFilter);
+      if (search.trim()) params.set("search", search.trim());
+      const res = await fetch(`/api/team/${selectedTeam.id}/finances?${params}`);
       const data = await res.json();
       if (data.success && data.data) {
         setTransactions(data.data.transactions ?? []);
@@ -55,7 +72,18 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedTeam?.id, seasonFilter, typeFilter, reasonFilter, search]);
+
+  useEffect(() => {
+    if (selectedTeam?.id) {
+      const t = setTimeout(fetchTransactions, search ? 300 : 0);
+      return () => clearTimeout(t);
+    }
+  }, [selectedTeam?.id, fetchTransactions, search]);
+
+  useEffect(() => {
+    if (selectedTeam?.id) triggerRefresh();
+  }, [selectedTeam?.id]);
 
   const handleSellMerch = async () => {
     const pct = parseFloat(sellPct);
@@ -91,8 +119,8 @@ export default function TransactionsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
       </div>
     );
   }
@@ -100,9 +128,55 @@ export default function TransactionsPage() {
   const totalIn = transactions.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const totalOut = transactions.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
 
+  const reasons = [...new Set(transactions.map((t) => t.reason).filter(Boolean))].sort();
+
   return (
     <div className="p-8 flex flex-col gap-6">
       <h2 className="text-2xl font-bold">Transactions & Finances</h2>
+
+      <div className="flex flex-wrap gap-4 items-center">
+        <div className="relative w-48">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        <Select value={seasonFilter} onValueChange={setSeasonFilter}>
+          <SelectTrigger className="w-32">
+            <SelectValue placeholder="Season" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All seasons</SelectItem>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => (
+              <SelectItem key={s} value={String(s)}>Season {s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="income">Income</SelectItem>
+            <SelectItem value="expense">Expense</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={reasonFilter} onValueChange={setReasonFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Reason" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All reasons</SelectItem>
+            {reasons.map((r) => (
+              <SelectItem key={r} value={r}>{r}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {teamFinances && teamFinances.merchPercentage > 0 && (teamFinances.leversEnabled !== false) && (
         <Card className="bg-neutral-900 border-neutral-800">
@@ -160,10 +234,11 @@ export default function TransactionsPage() {
           <CardContent className="p-4 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-blue-900/30"><DollarSign className="h-5 w-5 text-blue-400" /></div>
             <div>
-              <p className="text-xs text-muted-foreground">Net</p>
+              <p className="text-xs text-muted-foreground">Net (total from transactions)</p>
               <p className={`text-lg font-bold ${totalIn - totalOut >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {totalIn - totalOut >= 0 ? '+' : '-'}{formatMoney(Math.abs(totalIn - totalOut))}
               </p>
+              <p className="text-xs text-muted-foreground mt-1">Sidebar Balance = Net minus wage commitments</p>
             </div>
           </CardContent>
         </Card>
@@ -175,7 +250,12 @@ export default function TransactionsPage() {
         </CardHeader>
         <CardContent>
           {transactions.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-8">No transactions yet</p>
+            <EmptyState
+              icon={DollarSign}
+              title="No transactions yet"
+              description="Transactions appear when you sign players, earn prize money, sell merch, or complete trades. Try Packs, Draft, or Sponsors to build your finances."
+              action={{ label: "View Packs", href: "/main/dashboard/packs" }}
+            />
           ) : (
             <div className="space-y-2">
               {transactions.map(tx => (

@@ -10,6 +10,84 @@ async function getServiceSupabase() {
   );
 }
 
+async function insertMatchdayNotifications(
+  supabase: Awaited<ReturnType<typeof getServiceSupabase>>,
+  leagueId: string,
+  round: number,
+  competitionType: string
+) {
+  const { data: league } = await supabase.from('leagues').select('season').eq('id', leagueId).single();
+  const season = league?.season ?? 1;
+
+  let query = supabase
+    .from('matches')
+    .select(`
+      id,
+      home_team_id,
+      away_team_id,
+      home_score,
+      away_score,
+      home_team:teams!matches_home_team_id_fkey(id, acronym, user_id),
+      away_team:teams!matches_away_team_id_fkey(id, acronym, user_id)
+    `)
+    .eq('league_id', leagueId)
+    .eq('season', season)
+    .eq('round', round)
+    .eq('match_status', 'simulated');
+
+  if (competitionType === 'domestic') {
+    query = query.or('competition_type.eq.domestic,competition_type.is.null');
+  } else {
+    query = query.eq('competition_type', competitionType);
+  }
+
+  const { data: matches } = await query;
+
+  if (!matches?.length) return;
+
+  const compLabel = competitionType === 'domestic' ? '' : `${competitionType.toUpperCase()} `;
+
+  for (const m of matches as any[]) {
+    const homeScore = m.home_score ?? 0;
+    const awayScore = m.away_score ?? 0;
+    const homeAcronym = m.home_team?.acronym ?? 'Home';
+    const awayAcronym = m.away_team?.acronym ?? 'Away';
+    const homeUserId = m.home_team?.user_id;
+    const awayUserId = m.away_team?.user_id;
+
+    const homeWdl = homeScore > awayScore ? 'W' : homeScore < awayScore ? 'L' : 'D';
+    const awayWdl = awayScore > homeScore ? 'W' : awayScore < homeScore ? 'L' : 'D';
+
+    const homeMsg = `${compLabel}Matchday result: vs ${awayAcronym} ${homeScore}-${awayScore} — ${homeWdl}`;
+    const awayMsg = `${compLabel}Matchday result: vs ${homeAcronym} ${homeScore}-${awayScore} — ${awayWdl}`;
+
+    if (homeUserId) {
+      await supabase.from('notifications').insert({
+        user_id: homeUserId,
+        league_id: leagueId,
+        team_id: m.home_team_id,
+        type: 'matchday_played',
+        title: 'Matchday result',
+        message: homeMsg,
+        read: false,
+        link: '/main/dashboard/schedule',
+      });
+    }
+    if (awayUserId) {
+      await supabase.from('notifications').insert({
+        user_id: awayUserId,
+        league_id: leagueId,
+        team_id: m.away_team_id,
+        type: 'matchday_played',
+        title: 'Matchday result',
+        message: awayMsg,
+        read: false,
+        link: '/main/dashboard/schedule',
+      });
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -92,6 +170,10 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
+        if (data?.success && data?.round) {
+          await insertMatchdayNotifications(serviceSupabase, leagueId, data.round, 'domestic');
+        }
+
         return NextResponse.json({ success: true, data });
       }
 
@@ -102,8 +184,8 @@ export async function POST(request: NextRequest) {
         }
 
         const competitionType = body.competitionType as string;
-        if (!['ucl', 'uel', 'uecl'].includes(competitionType)) {
-          return NextResponse.json({ success: false, error: 'competitionType must be ucl, uel, or uecl' }, { status: 400 });
+        if (!['ucl', 'uel', 'uecl', 'supercup'].includes(competitionType)) {
+          return NextResponse.json({ success: false, error: 'competitionType must be ucl, uel, uecl, or supercup' }, { status: 400 });
         }
 
         const { data: league } = await serviceSupabase
@@ -123,6 +205,10 @@ export async function POST(request: NextRequest) {
 
         if (error) {
           return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        }
+
+        if (data?.success && data?.round) {
+          await insertMatchdayNotifications(serviceSupabase, leagueId, data.round, competitionType);
         }
 
         return NextResponse.json({ success: true, data });
@@ -595,6 +681,9 @@ export async function GET(request: NextRequest) {
       case 'schedule': {
         const season = searchParams.get('season');
         const round = searchParams.get('round');
+        const roundFrom = searchParams.get('roundFrom') || searchParams.get('round_from');
+        const roundTo = searchParams.get('roundTo') || searchParams.get('round_to');
+        const competitionType = searchParams.get('competition_type') || searchParams.get('competitionType');
         const { data: league } = await serviceSupabase
           .from('leagues')
           .select('season, current_round, total_rounds')
@@ -616,6 +705,19 @@ export async function GET(request: NextRequest) {
 
         if (round) {
           query = query.eq('round', parseInt(round));
+        } else if (roundFrom || roundTo) {
+          const from = roundFrom ? parseInt(roundFrom) : undefined;
+          const to = roundTo ? parseInt(roundTo) : undefined;
+          if (from != null) query = query.gte('round', from);
+          if (to != null) query = query.lte('round', to);
+        }
+
+        if (competitionType) {
+          if (['ucl', 'uel', 'uecl', 'supercup'].includes(competitionType)) {
+            query = query.eq('competition_type', competitionType);
+          } else if (competitionType === 'domestic') {
+            query = query.or('competition_type.eq.domestic,competition_type.is.null');
+          }
         }
 
         const { data, error } = await query;
@@ -631,6 +733,56 @@ export async function GET(request: NextRequest) {
             current_round: league?.current_round,
             total_rounds: league?.total_rounds
           }
+        });
+      }
+
+      case 'competition_winners': {
+        const { data: uclRows } = await serviceSupabase
+          .from('team_competition_results')
+          .select('team_id, teams!inner(name, acronym, logo_url)')
+          .eq('league_id', leagueId)
+          .eq('stage', 'UCL Winners');
+        const { data: uelRows } = await serviceSupabase
+          .from('team_competition_results')
+          .select('team_id, teams!inner(name, acronym, logo_url)')
+          .eq('league_id', leagueId)
+          .eq('stage', 'UEL Winners');
+        const { data: ueclRows } = await serviceSupabase
+          .from('team_competition_results')
+          .select('team_id, teams!inner(name, acronym, logo_url)')
+          .eq('league_id', leagueId)
+          .eq('stage', 'UECL Winners');
+        const { data: hofRows } = await serviceSupabase
+          .from('hall_of_fame')
+          .select('team_id, teams!inner(name, acronym, logo_url)')
+          .eq('league_id', leagueId)
+          .eq('position', 1);
+
+        const countByTeam = (rows: { team_id: string; teams: { name: string; acronym: string; logo_url: string | null } }[] | null) => {
+          const map = new Map<string, { count: number; team: { name: string; acronym: string; logo_url: string | null } }>();
+          (rows || []).forEach((r) => {
+            const cur = map.get(r.team_id);
+            const team = r.teams as { name: string; acronym: string; logo_url: string | null };
+            if (cur) {
+              map.set(r.team_id, { count: cur.count + 1, team });
+            } else {
+              map.set(r.team_id, { count: 1, team });
+            }
+          });
+          return Array.from(map.entries())
+            .map(([team_id, v]) => ({ team_id, count: v.count, team: v.team }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3);
+        };
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            ucl: countByTeam(uclRows as any),
+            uel: countByTeam(uelRows as any),
+            uecl: countByTeam(ueclRows as any),
+            domestic: countByTeam(hofRows as any),
+          },
         });
       }
 
@@ -661,6 +813,10 @@ export async function GET(request: NextRequest) {
         }
 
         const season = leagueRow?.season ?? 1;
+        const currentRoundUcl = leagueRow?.current_round_ucl ?? 0;
+        const currentRoundUel = leagueRow?.current_round_uel ?? 0;
+        const currentRoundUecl = leagueRow?.current_round_uecl ?? 0;
+
         const { count: unsimulatedCount } = await serviceSupabase
           .from('matches')
           .select('*', { count: 'exact', head: true })
@@ -668,10 +824,15 @@ export async function GET(request: NextRequest) {
           .eq('season', season)
           .eq('match_status', 'scheduled');
 
-        const [uclRes, uelRes, ueclRes] = await Promise.all([
+        const [uclRes, uelRes, ueclRes, supercupRes, uclScheduledRes, uelScheduledRes, ueclScheduledRes, supercupScheduledRes] = await Promise.all([
           serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'ucl'),
           serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'uel'),
           serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'uecl'),
+          serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'supercup').eq('match_status', 'scheduled'),
+          serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'ucl').eq('round', currentRoundUcl || 1).eq('match_status', 'scheduled'),
+          serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'uel').eq('round', currentRoundUel || 1).eq('match_status', 'scheduled'),
+          serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'uecl').eq('round', currentRoundUecl || 1).eq('match_status', 'scheduled'),
+          serviceSupabase.from('matches').select('id', { count: 'exact', head: true }).eq('league_id', leagueId).eq('season', season).eq('competition_type', 'supercup').eq('round', 1).eq('match_status', 'scheduled'),
         ]);
 
         const isHost = await isLeagueHost(serviceSupabase, leagueId, user.id);
@@ -684,13 +845,18 @@ export async function GET(request: NextRequest) {
             has_ucl_matches: (uclRes.count ?? 0) > 0,
             has_uel_matches: (uelRes.count ?? 0) > 0,
             has_uecl_matches: (ueclRes.count ?? 0) > 0,
+            has_supercup_matches: (supercupRes.count ?? 0) > 0,
+            scheduled_ucl_this_round: uclScheduledRes.count ?? 0,
+            scheduled_uel_this_round: uelScheduledRes.count ?? 0,
+            scheduled_uecl_this_round: ueclScheduledRes.count ?? 0,
+            scheduled_supercup_this_round: supercupScheduledRes.count ?? 0,
             is_host: isHost,
           },
         });
       }
 
       default:
-        return NextResponse.json({ success: false, error: 'type parameter required (standings, schedule, audit_logs, league_info)' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'type parameter required (standings, schedule, audit_logs, league_info, competition_winners)' }, { status: 400 });
     }
   } catch (error: any) {
     console.error('Game API GET error:', error);

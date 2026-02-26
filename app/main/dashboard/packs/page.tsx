@@ -5,13 +5,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Toaster, toast } from "sonner";
 import { useLeague } from "@/contexts/LeagueContext";
 import { useLeagueSettings } from "@/contexts/LeagueSettingsContext";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { PackRevealCard } from "@/components/PackRevealCard";
+import { Info } from "lucide-react";
 
 type Pack = {
   id: number;
@@ -45,7 +47,8 @@ export default function PackStorePage() {
   const [availableBalance, setAvailableBalance] = useState(0);
   const [currentSeason, setCurrentSeason] = useState(1);
   const [packs, setPacks] = useState<Pack[]>([]);
-  
+  const [oddsCache, setOddsCache] = useState<Record<number, { rating: number; pct: string }[]>>({});
+
   const { selectedTeam } = useLeague();
   const { settings } = useLeagueSettings();
   const { triggerRefresh, refreshKey } = useRefresh();
@@ -64,6 +67,22 @@ export default function PackStorePage() {
   }, [selectedTeam?.id, selectedTeam?.leagues?.season]);
 
   const getSeasonPacks = () => packs.filter(pack => pack.season === currentSeason);
+
+  const fetchPackOdds = async (packId: number) => {
+    if (oddsCache[packId]) return;
+    try {
+      const res = await fetch(`/api/packs/odds?packId=${packId}`);
+      const data = await res.json();
+      if (data.success && data.odds) {
+        setOddsCache((prev) => ({
+          ...prev,
+          [packId]: data.odds.map((o: { rating: number; pct: string }) => ({ rating: o.rating, pct: o.pct })),
+        }));
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   // Fetch pack history (league-wide) and team data when team changes
   useEffect(() => {
@@ -240,13 +259,37 @@ export default function PackStorePage() {
                       Player Count: {pack.player_count}
                     </span>
                     <span className="text-sm text-white">{pack.pack_type}</span>
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleOpenPack(pack)}
-                      disabled={loading || availableBalance < pack.price || !settings.transferWindowOpen}
-                    >
-                      {loading ? "Opening..." : !settings.transferWindowOpen ? "Transfer Window Closed" : "Open"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Popover onOpenChange={(open) => open && fetchPackOdds(pack.id)}>
+                        <PopoverTrigger asChild>
+                          <Button size="sm" variant="outline" className="text-white border-white/50 hover:bg-white/10">
+                            <Info className="h-4 w-4 mr-1" /> Odds
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64" align="end">
+                          <p className="text-sm font-medium mb-2">Rating odds (Season {pack.season})</p>
+                          <div className="space-y-1 max-h-48 overflow-y-auto text-sm">
+                            {oddsCache[pack.id]?.length ? (
+                              oddsCache[pack.id].map((o) => (
+                                <div key={o.rating} className="flex justify-between">
+                                  <span>OVR {o.rating}</span>
+                                  <span>{o.pct}%</span>
+                                </div>
+                              ))
+                            ) : (
+                              <p className="text-muted-foreground">Loading...</p>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleOpenPack(pack)}
+                        disabled={loading || availableBalance < pack.price || !settings.transferWindowOpen}
+                      >
+                        {loading ? "Opening..." : !settings.transferWindowOpen ? "Transfer Window Closed" : "Open"}
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -318,7 +361,7 @@ export default function PackStorePage() {
             <div className="space-y-6">
               {/* Minimal header */}
               <div className="text-center space-y-1">
-                <h2 className="text-xl font-semibold">Pack Opened</h2>
+                <DialogTitle className="text-xl font-semibold">Pack Opened</DialogTitle>
                 <p className="text-sm text-muted-foreground">
                   {packResult.pack?.name || "Unknown Pack"}
                 </p>
@@ -362,6 +405,7 @@ export default function PackStorePage() {
             </div>
           ) : (
             <div className="text-center py-12">
+              <DialogTitle className="sr-only">Pack Opened</DialogTitle>
               <p className="text-muted-foreground">Loading pack results...</p>
             </div>
           )}

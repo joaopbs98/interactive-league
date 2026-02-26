@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const leagueId = searchParams.get('leagueId');
     const teamId = searchParams.get('teamId');
+    const mode = searchParams.get('mode'); // 'history' for past resolved FAs
     if (!leagueId) {
       return NextResponse.json({ success: false, error: 'leagueId required' }, { status: 400 });
     }
@@ -25,19 +26,57 @@ export async function GET(request: NextRequest) {
 
     const { data: league } = await serviceSupabase
       .from('leagues')
-      .select('season, fa_deadline')
+      .select('season, fa_deadline, fa_pool_status')
       .eq('id', leagueId)
       .single();
 
     const season = league?.season || 1;
 
+    if (mode === 'history') {
+      const { data: wonBids } = await serviceSupabase
+        .from('free_agent_bids')
+        .select('player_id, team_id, salary, years, created_at')
+        .eq('league_id', leagueId)
+        .eq('season', season)
+        .eq('status', 'won')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (!wonBids?.length) {
+        return NextResponse.json({ success: true, data: [] });
+      }
+      const playerIds = [...new Set(wonBids.map((b) => b.player_id))];
+      const teamIds = [...new Set(wonBids.map((b) => b.team_id))];
+      const [playersRes, teamsRes] = await Promise.all([
+        serviceSupabase.from('league_players').select('player_id, player_name').eq('league_id', leagueId).in('player_id', playerIds),
+        serviceSupabase.from('teams').select('id, name, acronym').in('id', teamIds),
+      ]);
+      const playerMap = new Map((playersRes.data || []).map((p) => [p.player_id, p]));
+      const teamMap = new Map((teamsRes.data || []).map((t) => [t.id, t]));
+      const history = wonBids.map((b) => ({
+        player_id: b.player_id,
+        player_name: playerMap.get(b.player_id)?.player_name ?? b.player_id,
+        winner_team: teamMap.get(b.team_id)?.name ?? b.team_id,
+        winner_acronym: teamMap.get(b.team_id)?.acronym,
+        salary: b.salary,
+        years: b.years,
+        resolved_at: b.created_at,
+      }));
+      return NextResponse.json({ success: true, data: history });
+    }
+
     const { data: poolRows } = await serviceSupabase
       .from('free_agent_pool')
-      .select('player_id')
+      .select('player_id, deadline')
       .eq('league_id', leagueId)
       .eq('season', season);
     const poolPlayerIds = new Set((poolRows || []).map((r: { player_id: string }) => r.player_id));
+    const poolDeadlineMap = new Map((poolRows || []).map((r: { player_id: string; deadline: string | null }) => [r.player_id, r.deadline]));
     const usePool = poolPlayerIds.size > 0;
+    const poolConfirmed = league?.fa_pool_status === 'confirmed';
+
+    if (usePool && !poolConfirmed) {
+      return NextResponse.json({ success: true, data: [], fa_deadline: null });
+    }
 
     let query = serviceSupabase
       .from('league_players')
@@ -56,6 +95,10 @@ export async function GET(request: NextRequest) {
     }
 
     let enriched = data || [];
+    enriched = enriched.map((a: { player_id: string }) => ({
+      ...a,
+      deadline: poolDeadlineMap.get(a.player_id) ?? null,
+    }));
     if (teamId && enriched.length > 0) {
       const { data: teamCheck } = await serviceSupabase
         .from('teams')
@@ -160,24 +203,28 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Salary must be in $100,000 increments' }, { status: 400 });
       }
 
-      const { data: leagueRow } = await serviceSupabase
-        .from('leagues')
-        .select('fa_deadline')
-        .eq('id', leagueId)
+      const { data: poolRow } = await serviceSupabase
+        .from('free_agent_pool')
+        .select('deadline')
+        .eq('league_id', leagueId)
+        .eq('season', league?.season || 1)
+        .eq('player_id', playerId)
         .single();
-      const deadline = leagueRow?.fa_deadline ? new Date(leagueRow.fa_deadline) : null;
+      const deadline = poolRow?.deadline ? new Date(poolRow.deadline) : null;
       const now = new Date();
       if (deadline && now > deadline) {
-        return NextResponse.json({ success: false, error: 'Bid deadline has passed' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Bid deadline for this player has passed' }, { status: 400 });
       }
       if (deadline) {
         const oneMin = 60 * 1000;
         if (deadline.getTime() - now.getTime() <= oneMin) {
           const newDeadline = new Date(now.getTime() + oneMin);
           await serviceSupabase
-            .from('leagues')
-            .update({ fa_deadline: newDeadline.toISOString() })
-            .eq('id', leagueId);
+            .from('free_agent_pool')
+            .update({ deadline: newDeadline.toISOString() })
+            .eq('league_id', leagueId)
+            .eq('season', league?.season || 1)
+            .eq('player_id', playerId);
         }
       }
 

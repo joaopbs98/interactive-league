@@ -63,8 +63,9 @@ function calculateBaseWage(rating: number, position: string): number {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const teamId = request.nextUrl.pathname.split('/')[3]; // Extract teamId from path
+    const requestUrl = new URL(request.url);
+    const teamId = requestUrl.pathname.split('/')[3]; // Extract teamId from path
+    const searchParams = requestUrl.searchParams;
     
     console.log('Team Finances API called with teamId:', teamId);
     
@@ -176,12 +177,42 @@ export async function GET(request: NextRequest) {
       playerCount: teamPlayers?.length || 0
     });
 
-    const { data: financeRows } = await supabase
+    const seasonParam = searchParams.get('season');
+    const reasonParam = searchParams.get('reason');
+    const typeParam = searchParams.get('type'); // income | expense | all
+    const searchParam = searchParams.get('search');
+
+    let financeQuery = supabase
       .from('finances')
       .select('id, amount, reason, description, season, date, created_at')
       .eq('team_id', teamId)
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(200);
+
+    if (seasonParam && seasonParam !== 'all') {
+      const s = parseInt(seasonParam);
+      if (!isNaN(s)) financeQuery = financeQuery.eq('season', s);
+    }
+    if (reasonParam && reasonParam !== 'all') {
+      financeQuery = financeQuery.eq('reason', reasonParam);
+    }
+    if (typeParam === 'income') {
+      financeQuery = financeQuery.gt('amount', 0);
+    } else if (typeParam === 'expense') {
+      financeQuery = financeQuery.lt('amount', 0);
+    }
+
+    const { data: financeRows } = await financeQuery;
+
+    let filteredRows = financeRows ?? [];
+    if (searchParam && searchParam.trim()) {
+      const q = searchParam.trim().toLowerCase();
+      filteredRows = filteredRows.filter(
+        (r: { description?: string; reason?: string }) =>
+          (r.description ?? '').toLowerCase().includes(q) ||
+          (r.reason ?? '').toLowerCase().includes(q)
+      );
+    }
 
     return NextResponse.json({ 
       success: true,
@@ -194,7 +225,7 @@ export async function GET(request: NextRequest) {
           merchBaseRevenue: team.merch_base_revenue ?? 0,
           leversEnabled
         },
-        transactions: (financeRows ?? []).map((r: any) => ({
+        transactions: filteredRows.map((r: any) => ({
           id: r.id,
           amount: r.amount,
           reason: r.reason,

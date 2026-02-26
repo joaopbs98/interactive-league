@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -11,6 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useLeague } from "@/contexts/LeagueContext";
+import { ChevronDown, HelpCircle } from "lucide-react";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 interface HofEntry {
   team_id: string;
@@ -35,8 +38,9 @@ function situationBadge(
 }
 
 export default function HofPage() {
-  const { selectedLeagueId } = useLeague();
+  const { selectedLeagueId, selectedTeam } = useLeague();
   const [data, setData] = useState<HofEntry[]>([]);
+  const [howOpen, setHowOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,8 +109,28 @@ export default function HofPage() {
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-4">🏆 Hall of Fame Standings</h1>
+    <div className="p-8 flex flex-col gap-6">
+      <Breadcrumbs />
+      <h1 className="text-2xl font-bold">🏆 Hall of Fame Standings</h1>
+
+      <Card className="bg-neutral-900 border-neutral-800">
+        <button
+          type="button"
+          onClick={() => setHowOpen(!howOpen)}
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-neutral-800/50"
+        >
+          <span className="flex items-center gap-2">
+            <HelpCircle className="h-4 w-4" /> How it works
+          </span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${howOpen ? "rotate-180" : ""}`} />
+        </button>
+        {howOpen && (
+          <div className="px-4 pb-4 text-sm text-muted-foreground border-t border-neutral-800 pt-4">
+            <p>HOF points are earned from league position each season. Last 3 = sum of points from your last 3 seasons. Overall = total across all seasons. EXCELLENT = above threshold, POOR = below threshold.</p>
+          </div>
+        )}
+      </Card>
+
       <Table>
         <TableHeader>
           <TableRow>
@@ -120,7 +144,10 @@ export default function HofPage() {
         </TableHeader>
         <TableBody>
           {data.map((entry, idx) => (
-            <TableRow key={entry.team_id}>
+            <TableRow
+              key={entry.team_id}
+              className={selectedTeam?.id === entry.team_id ? "bg-blue-900/20" : ""}
+            >
               <TableCell>{idx + 1}</TableCell>
               <TableCell>{entry.team_name}</TableCell>
               <TableCell className="text-center">{entry.hof_last_3}</TableCell>

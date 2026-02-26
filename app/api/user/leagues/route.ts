@@ -75,8 +75,10 @@ export async function GET(request: NextRequest) {
           id,
           name,
           season,
+          status,
           commissioner_user_id,
-          created_at
+          created_at,
+          updated_at
         )
       `)
       .eq("user_id", session.user.id);
@@ -98,8 +100,10 @@ export async function GET(request: NextRequest) {
           id,
           name,
           season,
+          status,
           commissioner_user_id,
-          created_at
+          created_at,
+          updated_at
         )
       `)
       .eq("user_id", session.user.id);
@@ -169,9 +173,11 @@ export async function GET(request: NextRequest) {
       id: team.leagues.id,
       name: team.leagues.name,
       season: team.leagues.season,
+      status: team.leagues.status,
       team_count: leagueTeamCounts[team.league_id] || 1, // Default to 1 if count not available
       commissioner_user_id: team.leagues.commissioner_user_id,
       created_at: team.leagues.created_at,
+      updated_at: team.leagues.updated_at,
       my_team: {
         id: team.id,
         name: team.name,

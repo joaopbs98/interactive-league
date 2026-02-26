@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const serviceSupabase = await getServiceSupabase();
     const { data, error } = await serviceSupabase
       .from('leagues')
-      .select('match_mode, transfer_window_open')
+      .select('match_mode, transfer_window_open, status')
       .eq('id', leagueId)
       .single();
 
@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       data: {
         match_mode: data?.match_mode ?? 'SIMULATED',
         transfer_window_open: data?.transfer_window_open ?? true,
+        status: data?.status ?? 'PRESEASON_SETUP',
         is_host: isHost
       }
     });
@@ -63,7 +64,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { leagueId, match_mode, transfer_window_open } = body;
+    const { leagueId, match_mode, transfer_window_open, status } = body;
 
     if (!leagueId) {
       return NextResponse.json({ success: false, error: 'leagueId required' }, { status: 400 });
@@ -81,6 +82,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (typeof transfer_window_open === 'boolean') {
       updates.transfer_window_open = transfer_window_open;
+    }
+    if (typeof status === 'string' && ['IN_SEASON', 'OFFSEASON'].includes(status)) {
+      updates.status = status;
     }
 
     if (Object.keys(updates).length === 0) {

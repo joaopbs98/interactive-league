@@ -38,8 +38,7 @@ export function ManualScheduleForm({
   const [round, setRound] = useState(1);
   const [homeTeamId, setHomeTeamId] = useState("");
   const [awayTeamId, setAwayTeamId] = useState("");
-  const [competitionType, setCompetitionType] = useState<"domestic" | "ucl" | "uel" | "uecl">("domestic");
-  const [groupName, setGroupName] = useState<"A" | "B">("A");
+  const [competitionType, setCompetitionType] = useState<"domestic" | "ucl" | "uel" | "uecl" | "supercup">("domestic");
   const [addLoading, setAddLoading] = useState(false);
 
   const totalRounds =
@@ -78,7 +77,7 @@ export function ManualScheduleForm({
           homeTeamId,
           awayTeamId,
           competitionType,
-          groupName: competitionType !== "domestic" ? groupName : undefined,
+          groupName: competitionType !== "domestic" && competitionType !== "supercup" ? "A" : undefined,
         }),
       });
       const data = await res.json();
@@ -97,12 +96,24 @@ export function ManualScheduleForm({
 
   const matchesInRound = matches.filter((m) => {
     if (m.round !== round || (m.competition_type || "domestic") !== competitionType) return false;
-    if (competitionType !== "domestic") return (m.group_name || "A") === groupName;
+    if (competitionType === "supercup") return true;
+    if (competitionType !== "domestic") return (m.group_name || "A") === "A";
     return true;
   });
   const scheduledTeamIds = new Set(matchesInRound.flatMap((m) => [m.home_team_id, m.away_team_id]));
   const availableTeams = teams.filter((t) => !scheduledTeamIds.has(t.id));
-  const teamsPerRound = competitionType === "domestic" ? teams.length : 6;
+
+  const teamsInCompetition = new Set(
+    matches
+      .filter((m) => (m.competition_type || "domestic") === competitionType)
+      .flatMap((m) => [m.home_team_id, m.away_team_id])
+  ).size;
+  const teamsPerRound =
+    competitionType === "domestic"
+      ? teams.length
+      : competitionType === "supercup"
+        ? 2
+        : Math.max(2, teamsInCompetition || 6);
   const roundFull = scheduledTeamIds.size >= teamsPerRound;
   const isDuplicateFixture = Boolean(
     homeTeamId &&
@@ -121,7 +132,7 @@ export function ManualScheduleForm({
           <Label className="text-xs">Type</Label>
           <Select
             value={competitionType}
-            onValueChange={(v) => setCompetitionType(v as "domestic" | "ucl" | "uel" | "uecl")}
+            onValueChange={(v) => setCompetitionType(v as "domestic" | "ucl" | "uel" | "uecl" | "supercup")}
           >
             <SelectTrigger className="w-24">
               <SelectValue />
@@ -131,23 +142,10 @@ export function ManualScheduleForm({
               <SelectItem value="ucl">UCL</SelectItem>
               <SelectItem value="uel">UEL</SelectItem>
               <SelectItem value="uecl">UECL</SelectItem>
+              <SelectItem value="supercup">Super Cup</SelectItem>
             </SelectContent>
           </Select>
         </div>
-        {competitionType !== "domestic" && (
-          <div className="space-y-1">
-            <Label className="text-xs">Group</Label>
-            <Select value={groupName} onValueChange={(v) => setGroupName(v as "A" | "B")}>
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="A">A</SelectItem>
-                <SelectItem value="B">B</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
         <div className="space-y-1">
           <Label className="text-xs">Round</Label>
           <Select

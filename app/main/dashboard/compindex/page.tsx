@@ -12,7 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, HelpCircle } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 type CompIndexEntry = {
   team_id: string;
@@ -40,8 +42,9 @@ const SituationBadge = ({ status }: { status: string }) => {
 };
 
 export default function CompIndexPage() {
-  const { selectedLeagueId } = useLeague();
+  const { selectedLeagueId, selectedTeam } = useLeague();
   const [data, setData] = useState<CompIndexEntry[]>([]);
+  const [howOpen, setHowOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,8 +98,8 @@ export default function CompIndexPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
       </div>
     );
   }
@@ -114,7 +117,26 @@ export default function CompIndexPage() {
 
   return (
     <div className="p-8 flex flex-col gap-8">
+      <Breadcrumbs />
       <h2 className="text-2xl font-bold">CompIndex Rankings</h2>
+
+      <Card className="bg-neutral-900 border-neutral-800">
+        <button
+          type="button"
+          onClick={() => setHowOpen(!howOpen)}
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-neutral-800/50"
+        >
+          <span className="flex items-center gap-2">
+            <HelpCircle className="h-4 w-4" /> How it works
+          </span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${howOpen ? "rotate-180" : ""}`} />
+        </button>
+        {howOpen && (
+          <div className="px-4 pb-4 text-sm text-muted-foreground border-t border-neutral-800 pt-4">
+            <p>CompIndex is based on your top 14 players by rating. Higher ratings = higher CompIndex. Situation badges indicate if you are above average, inside average, below average, or critical compared to league peers.</p>
+          </div>
+        )}
+      </Card>
 
       <Card className="bg-neutral-900 border-neutral-800">
         <CardContent className="p-0">
@@ -137,7 +159,10 @@ export default function CompIndexPage() {
               </TableHeader>
               <TableBody>
                 {data.map((entry, idx) => (
-                  <TableRow key={entry.team_id}>
+                  <TableRow
+                    key={entry.team_id}
+                    className={selectedTeam?.id === entry.team_id ? "bg-blue-900/20" : ""}
+                  >
                     <TableCell>{idx + 1}</TableCell>
                     <TableCell>
                       <span className="font-medium">{entry.team_name}</span>

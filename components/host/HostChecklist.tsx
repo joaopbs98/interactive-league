@@ -231,13 +231,13 @@ export function HostChecklist({
               International competitions use a different format than the domestic league:
             </p>
             <ul className="list-disc list-inside space-y-0.5">
-              <li>Group stage: 2 groups of 6, 10 games per team (double round-robin)</li>
+              <li>Group stage: UCL 1 group of 6 (10 games), UEL/UECL 1 group of 4 each (6 games)</li>
               <li>Knockout: Stage Two → Semi-Finals → Final</li>
-              <li>Qualification: domestic position (e.g. top 4 → UCL, 5–6 → UEL, 7 → Conference)</li>
+              <li>Qualification: proportional from current season (14-team basis: 6 UCL, 4 UECL, 4 UEL). Scales for 10–20 teams. Super Cup: UCL vs UEL winners from previous season, from S2.</li>
             </ul>
             <p className="mt-2">
-              When adding international matches manually, set <strong>Type</strong> to UCL/UEL/UECL and use{" "}
-              <strong>group_name</strong> (A, B) for group stage. Standings update in History & Stats.
+              When adding international matches manually, set <strong>Type</strong> to UCL/UEL/UECL/Super Cup and use{" "}
+              <strong>group_name</strong> (A) for group stage. Standings update in History & Stats.
             </p>
           </div>
         </details>

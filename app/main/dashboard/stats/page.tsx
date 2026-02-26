@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Loader2, Trophy, Calendar } from "lucide-react";
+import { Trophy, Calendar } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Standing = {
   id: string;
@@ -36,12 +37,22 @@ type Match = {
   id: string;
   round: number;
   season: number;
+  competition_type: string | null;
+  group_name?: string | null;
   home_score: number | null;
   away_score: number | null;
   match_status: string;
   played_at: string | null;
   home_team: { id: string; name: string; acronym: string; logo_url: string | null } | null;
   away_team: { id: string; name: string; acronym: string; logo_url: string | null } | null;
+};
+
+type StageOption = { round: number; label: string };
+
+type WinnerEntry = {
+  team_id: string;
+  count: number;
+  team: { name: string; acronym: string; logo_url: string | null };
 };
 
 function StandingsTable({ rows }: { rows: Standing[] }) {
@@ -147,6 +158,16 @@ export default function StatsPage() {
   const [standings, setStandings] = useState<Standing[]>([]);
   const [competitionStandings, setCompetitionStandings] = useState<CompetitionStanding[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [winners, setWinners] = useState<{
+    ucl: WinnerEntry[];
+    uel: WinnerEntry[];
+    uecl: WinnerEntry[];
+    domestic: WinnerEntry[];
+  } | null>(null);
+  const [roundFrom, setRoundFrom] = useState<number | "">("");
+  const [roundTo, setRoundTo] = useState<number | "">("");
+  const [matchCompetitionFilter, setMatchCompetitionFilter] = useState<string>("all");
+  const [selectedStageRound, setSelectedStageRound] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -156,7 +177,25 @@ export default function StatsPage() {
       return;
     }
     fetchSeasons();
+    fetchWinners();
   }, [selectedLeagueId]);
+
+  const fetchWinners = async () => {
+    if (!selectedLeagueId) return;
+    try {
+      const res = await fetch(
+        `/api/league/game?leagueId=${selectedLeagueId}&type=competition_winners`
+      );
+      const data = await res.json();
+      if (data.success && data.data) {
+        setWinners(data.data);
+      } else {
+        setWinners(null);
+      }
+    } catch {
+      setWinners(null);
+    }
+  };
 
   const fetchSeasons = async () => {
     if (!selectedLeagueId) return;
@@ -254,17 +293,146 @@ export default function StatsPage() {
 
   if (loading && seasons.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
       </div>
     );
   }
+
+  const compLabel = (ct: string | null) => {
+    if (!ct || ct === "domestic") return "";
+    const map: Record<string, string> = { ucl: "UCL", uel: "UEL", uecl: "UECL", supercup: "SC" };
+    return map[ct] || ct;
+  };
+
+  const matchesByCompetition = matches.filter((m) => {
+    const ct = m.competition_type ?? "domestic";
+    if (matchCompetitionFilter === "all") return true;
+    if (matchCompetitionFilter === "domestic") return ct === "domestic" || !m.competition_type;
+    return ct === matchCompetitionFilter;
+  });
+
+  const isInternationalMatchFilter = ["ucl", "uel", "uecl"].includes(matchCompetitionFilter);
+  const stageOptions: StageOption[] = isInternationalMatchFilter
+    ? (() => {
+        const rounds = [...new Set(matchesByCompetition.map((m) => m.round))].sort((a, b) => a - b);
+        return rounds.map((r) => {
+          const roundMatches = matchesByCompetition.filter((m) => m.round === r);
+          const hasGroup = roundMatches.some((m) => m.group_name);
+          if (hasGroup) {
+            return { round: r, label: `Group Stage R${r}` };
+          }
+          const cnt = roundMatches.length;
+          const knockoutLabel =
+            cnt >= 8 ? "Round of 16" : cnt >= 4 ? "Quarter-finals" : cnt >= 2 ? "Semifinals" : "Final";
+          return { round: r, label: knockoutLabel };
+        });
+      })()
+    : [];
+
+  const displayedMatches = matchesByCompetition.filter((m) => {
+    if (isInternationalMatchFilter && selectedStageRound != null) {
+      return m.round === selectedStageRound;
+    }
+    if (roundFrom !== "" || roundTo !== "") {
+      const from = roundFrom !== "" ? roundFrom : 1;
+      const to = roundTo !== "" ? roundTo : 999;
+      return m.round >= from && m.round <= to;
+    }
+    return true;
+  });
 
   return (
     <div className="p-8 flex flex-col gap-6">
       <h2 className="text-2xl font-bold">History & Stats</h2>
 
       {error && <p className="text-red-500 text-sm">{error}</p>}
+
+      {/* Most winners cards */}
+      {winners && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="bg-neutral-900 border-neutral-800 overflow-hidden">
+            <div className="h-1 bg-amber-500" />
+            <CardContent className="p-4">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Most UCL Winners</h4>
+              {winners.ucl.length === 0 ? (
+                <p className="text-sm text-muted-foreground">—</p>
+              ) : (
+                <div className="space-y-1">
+                  {winners.ucl.slice(0, 3).map((w, i) => (
+                    <div key={w.team_id} className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm w-5">{i + 1}.</span>
+                      {w.team.logo_url && <img src={w.team.logo_url} alt="" className="w-5 h-5 rounded" />}
+                      <span className="font-medium">{w.team.name}</span>
+                      <Badge variant="secondary" className="text-xs ml-auto">{w.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="bg-neutral-900 border-neutral-800 overflow-hidden">
+            <div className="h-1 bg-orange-500" />
+            <CardContent className="p-4">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Most UEL Winners</h4>
+              {winners.uel.length === 0 ? (
+                <p className="text-sm text-muted-foreground">—</p>
+              ) : (
+                <div className="space-y-1">
+                  {winners.uel.slice(0, 3).map((w, i) => (
+                    <div key={w.team_id} className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm w-5">{i + 1}.</span>
+                      {w.team.logo_url && <img src={w.team.logo_url} alt="" className="w-5 h-5 rounded" />}
+                      <span className="font-medium">{w.team.name}</span>
+                      <Badge variant="secondary" className="text-xs ml-auto">{w.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="bg-neutral-900 border-neutral-800 overflow-hidden">
+            <div className="h-1 bg-green-600" />
+            <CardContent className="p-4">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Most UECL Winners</h4>
+              {winners.uecl.length === 0 ? (
+                <p className="text-sm text-muted-foreground">—</p>
+              ) : (
+                <div className="space-y-1">
+                  {winners.uecl.slice(0, 3).map((w, i) => (
+                    <div key={w.team_id} className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm w-5">{i + 1}.</span>
+                      {w.team.logo_url && <img src={w.team.logo_url} alt="" className="w-5 h-5 rounded" />}
+                      <span className="font-medium">{w.team.name}</span>
+                      <Badge variant="secondary" className="text-xs ml-auto">{w.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card className="bg-neutral-900 border-neutral-800 overflow-hidden">
+            <div className="h-1 bg-yellow-600" />
+            <CardContent className="p-4">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Most Domestic Champions</h4>
+              {winners.domestic.length === 0 ? (
+                <p className="text-sm text-muted-foreground">—</p>
+              ) : (
+                <div className="space-y-1">
+                  {winners.domestic.slice(0, 3).map((w, i) => (
+                    <div key={w.team_id} className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm w-5">{i + 1}.</span>
+                      {w.team.logo_url && <img src={w.team.logo_url} alt="" className="w-5 h-5 rounded" />}
+                      <span className="font-medium">{w.team.name}</span>
+                      <Badge variant="secondary" className="text-xs ml-auto">{w.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Season selector */}
       {seasons.length > 0 && (
@@ -332,9 +500,84 @@ export default function StatsPage() {
       {/* Match results history */}
       <Card className="bg-neutral-900 border-neutral-800">
         <CardContent className="p-0">
-          <div className="p-4 border-b border-neutral-800 flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
-            <h3 className="font-semibold">Season {selectedSeason} Match Results</h3>
+          <div className="p-4 border-b border-neutral-800 flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              <h3 className="font-semibold">Season {selectedSeason} Match Results</h3>
+            </div>
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
+              <span className="text-sm text-muted-foreground">Competition:</span>
+              <select
+                value={matchCompetitionFilter}
+                onChange={(e) => {
+                  setMatchCompetitionFilter(e.target.value);
+                  setSelectedStageRound(null);
+                }}
+                className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-sm"
+              >
+                <option value="all">All</option>
+                <option value="domestic">Domestic</option>
+                <option value="ucl">UCL</option>
+                <option value="uel">UEL</option>
+                <option value="uecl">Conference</option>
+              </select>
+              {isInternationalMatchFilter && stageOptions.length > 0 ? (
+                <>
+                  <span className="text-sm text-muted-foreground">Stage:</span>
+                  <select
+                    value={selectedStageRound ?? ""}
+                    onChange={(e) =>
+                      setSelectedStageRound(e.target.value ? parseInt(e.target.value) : null)
+                    }
+                    className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-sm"
+                  >
+                    <option value="">All stages</option>
+                    {stageOptions.map((s) => (
+                      <option key={s.round} value={s.round}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm text-muted-foreground">Rounds:</span>
+                  <input
+                    type="number"
+                    placeholder="From"
+                    min={1}
+                    value={roundFrom}
+                    onChange={(e) =>
+                      setRoundFrom(e.target.value === "" ? "" : parseInt(e.target.value) || "")
+                    }
+                    className="w-20 px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-sm"
+                  />
+                  <span className="text-muted-foreground">–</span>
+                  <input
+                    type="number"
+                    placeholder="To"
+                    min={1}
+                    value={roundTo}
+                    onChange={(e) =>
+                      setRoundTo(e.target.value === "" ? "" : parseInt(e.target.value) || "")
+                    }
+                    className="w-20 px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-sm"
+                  />
+                  {(roundFrom !== "" || roundTo !== "") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoundFrom("");
+                        setRoundTo("");
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           {matches.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
@@ -343,7 +586,7 @@ export default function StatsPage() {
             </div>
           ) : (
             <div className="divide-y divide-neutral-800 max-h-[400px] overflow-y-auto">
-              {matches
+              {displayedMatches
                 .filter((m) => m.match_status === "simulated")
                 .map((match) => (
                   <div
@@ -360,7 +603,9 @@ export default function StatsPage() {
                       <span className="text-lg font-bold">
                         {match.home_score} - {match.away_score}
                       </span>
-                      <span className="text-xs text-muted-foreground block">R{match.round}</span>
+                      <span className="text-xs text-muted-foreground block">
+                        R{match.round}{compLabel(match.competition_type) ? ` ${compLabel(match.competition_type)}` : ""}
+                      </span>
                     </div>
                     <div className="flex items-center gap-3 flex-1">
                       {match.away_team?.logo_url && (
@@ -370,8 +615,8 @@ export default function StatsPage() {
                     </div>
                   </div>
                 ))}
-              {matches.filter((m) => m.match_status === "simulated").length === 0 &&
-                matches.length > 0 && (
+              {displayedMatches.filter((m) => m.match_status === "simulated").length === 0 &&
+                displayedMatches.length > 0 && (
                   <div className="p-8 text-center text-muted-foreground">
                     <p className="text-sm">No simulated matches yet.</p>
                   </div>

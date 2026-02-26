@@ -5,6 +5,7 @@ import { useLeague } from "@/contexts/LeagueContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Banknote, Plus, DollarSign } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Loan = {
   id: string;
@@ -170,8 +171,8 @@ export default function LoansPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
       </div>
     );
   }

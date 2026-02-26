@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 // Sonner imports
 import { Toaster, toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Auction = {
   id: string;
@@ -236,14 +237,14 @@ export default function AuctionsPage() {
         {/* Current Auctions */}
         <TabsContent value="current">
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="p-6">
+              <PageSkeleton variant="table" rows={6} />
             </div>
           ) : currentList.length === 0 ? (
             <Card className="bg-neutral-900 border-neutral-800">
               <CardContent className="p-8 text-center text-muted-foreground">
-                <p className="text-lg font-medium mb-2">No current auctions</p>
-                <p className="text-sm">Check back later for new auction listings.</p>
+                <p className="text-lg font-medium mb-2">No active auctions.</p>
+                <p className="text-sm">Check back when the transfer window opens.</p>
               </CardContent>
             </Card>
           ) : (
@@ -361,8 +362,8 @@ export default function AuctionsPage() {
         {/* Finished Auctions */}
         <TabsContent value="finished">
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="p-6">
+              <PageSkeleton variant="table" rows={6} />
             </div>
           ) : finishedList.length === 0 ? (
             <Card className="bg-neutral-900 border-neutral-800">

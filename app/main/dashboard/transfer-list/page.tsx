@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Images } from "@/lib/assets";
 import { Loader2, ShoppingCart, Trash2 } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { toast, Toaster } from "sonner";
 
 type Listing = {
@@ -245,8 +246,8 @@ export default function TransferListPage() {
       </p>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="p-6">
+          <PageSkeleton variant="table" rows={6} />
         </div>
       ) : (
         <>
@@ -276,9 +277,12 @@ export default function TransferListPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {listings.length === 0 ? (
-                <p className="text-muted-foreground py-8 text-center">
-                  No players listed for sale. List players from your Squad page.
-                </p>
+                <div className="py-12 text-center">
+                  <p className="text-muted-foreground text-lg font-medium mb-2">No players listed.</p>
+                  <p className="text-sm text-muted-foreground">
+                    List players from your Squad when the transfer window is open.
+                  </p>
+                </div>
               ) : (
                 listings.map((l) => (
                   <PlayerCard

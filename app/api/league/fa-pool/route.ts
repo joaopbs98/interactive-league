@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const serviceSupabase = await getServiceSupabase();
     const { data: league } = await serviceSupabase
       .from("leagues")
-      .select("season, fa_deadline")
+      .select("season, fa_deadline, fa_pool_status")
       .eq("id", leagueId)
       .single();
     const season = league?.season ?? 1;
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     const { data: pool, error } = await serviceSupabase
       .from("free_agent_pool")
-      .select("player_id")
+      .select("player_id, deadline")
       .eq("league_id", leagueId)
       .eq("season", season);
 
@@ -67,7 +67,8 @@ export async function GET(request: NextRequest) {
     }
 
     const poolIds = (pool || []).map((p) => p.player_id);
-    let poolDetails: { player_id: string; player_name?: string; rating?: number }[] = poolIds as unknown as { player_id: string }[];
+    const deadlineMap = new Map((pool || []).map((p) => [p.player_id, p.deadline]));
+    let poolDetails: { player_id: string; player_name?: string; rating?: number; deadline?: string | null }[] = poolIds as unknown as { player_id: string }[];
     if (poolIds.length > 0) {
       const { data: lp } = await serviceSupabase
         .from("league_players")
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
         .eq("league_id", leagueId)
         .in("player_id", poolIds);
       const map = new Map((lp || []).map((r) => [r.player_id, r]));
-      poolDetails = poolIds.map((id) => ({ player_id: id, ...map.get(id) }));
+      poolDetails = poolIds.map((id) => ({ player_id: id, ...map.get(id), deadline: deadlineMap.get(id) ?? null }));
     }
 
     return NextResponse.json({
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
       data: poolIds,
       poolDetails,
       fa_deadline: league?.fa_deadline ?? null,
+      fa_pool_status: league?.fa_pool_status ?? "draft",
     });
   } catch (err: unknown) {
     console.error("FA pool GET error:", err);
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, leagueId, playerIds, deadlineAt } = body;
+    const { action, leagueId, playerIds, deadlineAt, playerDeadlines } = body;
 
     if (!leagueId) {
       return NextResponse.json({ error: "leagueId required" }, { status: 400 });
@@ -117,10 +119,40 @@ export async function POST(request: NextRequest) {
 
     const { data: league } = await serviceSupabase
       .from("leagues")
-      .select("season")
+      .select("season, fa_deadline, fa_pool_status")
       .eq("id", leagueId)
       .single();
     const season = league?.season ?? 1;
+
+    if (action === "confirmPool") {
+      const { count } = await serviceSupabase
+        .from("free_agent_pool")
+        .select("player_id", { count: "exact", head: true })
+        .eq("league_id", leagueId)
+        .eq("season", season);
+      if ((count ?? 0) === 0) {
+        return NextResponse.json({ error: "Add players to the pool before confirming" }, { status: 400 });
+      }
+      const { error: updErr } = await serviceSupabase
+        .from("leagues")
+        .update({ fa_pool_status: "confirmed" })
+        .eq("id", leagueId);
+      if (updErr) {
+        return NextResponse.json({ error: updErr.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, message: "Pool confirmed – visible to managers" });
+    }
+
+    if (action === "resetPool") {
+      const { error: updErr } = await serviceSupabase
+        .from("leagues")
+        .update({ fa_pool_status: "draft" })
+        .eq("id", leagueId);
+      if (updErr) {
+        return NextResponse.json({ error: updErr.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, message: "Pool reset to draft" });
+    }
 
     if (action === "setDeadline") {
       const { error: updErr } = await serviceSupabase
@@ -139,7 +171,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "playerIds required" }, { status: 400 });
       }
 
+      if (league?.fa_pool_status === "confirmed") {
+        return NextResponse.json({ error: "Pool is confirmed. Cannot add players. Reset pool first if needed." }, { status: 400 });
+      }
+
+      const deadlines = (playerDeadlines && typeof playerDeadlines === "object") ? playerDeadlines as Record<string, string> : {};
       for (const playerId of ids) {
+        const dl = deadlines[playerId];
+        if (!dl || typeof dl !== "string") {
+          return NextResponse.json({ error: `Set a deadline for player ${playerId} before adding` }, { status: 400 });
+        }
         const { data: p } = await serviceSupabase
           .from("player")
           .select("player_id, name, full_name, image, description, positions, overall_rating")
@@ -185,6 +226,7 @@ export async function POST(request: NextRequest) {
             season,
             player_id: playerId,
             added_by_host: user.id,
+            deadline: dl,
           },
           { onConflict: "league_id,season,player_id" }
         );
@@ -196,6 +238,9 @@ export async function POST(request: NextRequest) {
       const ids = Array.isArray(playerIds) ? playerIds : [playerIds].filter(Boolean);
       if (ids.length === 0) {
         return NextResponse.json({ error: "playerIds required" }, { status: 400 });
+      }
+      if (league?.fa_pool_status === "confirmed") {
+        return NextResponse.json({ error: "Pool is confirmed. Cannot remove players." }, { status: 400 });
       }
       const { error: delErr } = await serviceSupabase
         .from("free_agent_pool")

@@ -95,18 +95,38 @@ export async function PATCH(request: NextRequest) {
 
     const serviceSupabase = await getServiceSupabase();
     const isHost = await isLeagueHost(serviceSupabase, leagueId, user.id);
-    if (!isHost) {
-      return NextResponse.json({ success: false, error: 'Host only' }, { status: 403 });
+
+    // Verify team ownership (for team-scoped fields) or host (for host-scoped fields)
+    const { data: teamCheck } = await serviceSupabase
+      .from('teams')
+      .select('id, user_id')
+      .eq('id', teamId)
+      .eq('league_id', leagueId)
+      .single();
+
+    if (!teamCheck) {
+      return NextResponse.json({ success: false, error: 'Team not found' }, { status: 404 });
     }
 
+    const isOwner = teamCheck.user_id === user.id;
+
     const updates: Record<string, unknown> = {};
-    if (typeof visitor_focus === 'string') updates.visitor_focus = visitor_focus;
-    if (typeof confirm_vf === 'boolean') updates.confirm_vf = confirm_vf;
-    if (typeof seasonal_performance === 'string') updates.seasonal_performance = seasonal_performance;
-    if (typeof sc_appearance === 'boolean') updates.sc_appearance = sc_appearance;
-    if (typeof capacity === 'number' && capacity > 0) updates.capacity = capacity;
+    // Team owner can set: visitor_focus, confirm_vf (for their own team)
+    if (isOwner) {
+      if (typeof visitor_focus === 'string') updates.visitor_focus = visitor_focus;
+      if (typeof confirm_vf === 'boolean') updates.confirm_vf = confirm_vf;
+    }
+    // Host can set: seasonal_performance, sc_appearance, capacity (for any team)
+    if (isHost) {
+      if (typeof seasonal_performance === 'string') updates.seasonal_performance = seasonal_performance;
+      if (typeof sc_appearance === 'boolean') updates.sc_appearance = sc_appearance;
+      if (typeof capacity === 'number' && capacity > 0) updates.capacity = capacity;
+    }
 
     if (Object.keys(updates).length === 0) {
+      if (!isOwner && !isHost) {
+        return NextResponse.json({ success: false, error: 'Only team owner or host can update stadium' }, { status: 403 });
+      }
       return NextResponse.json({ success: false, error: 'No valid updates' }, { status: 400 });
     }
 

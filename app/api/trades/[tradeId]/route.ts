@@ -79,6 +79,7 @@ export async function PATCH(
           title: 'Trade rejected',
           message: `${toTeam?.name || 'A team'} has rejected your trade proposal.`,
           read: false,
+          link: '/main/dashboard/trades',
         });
       }
       return NextResponse.json({ success: true, message: "Trade rejected successfully" });
@@ -119,6 +120,7 @@ export async function PATCH(
         title: 'Trade accepted',
         message: `${toTeam?.name || 'A team'} has accepted your trade proposal.`,
         read: false,
+        link: '/main/dashboard/trades',
       });
     }
 

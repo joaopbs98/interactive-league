@@ -118,6 +118,41 @@ export async function POST(request: NextRequest) {
       .delete()
       .eq("id", listingId);
 
+    const { data: sellerTeam } = await serviceSupabase
+      .from("teams")
+      .select("id, user_id, league_id")
+      .eq("id", listing.team_id)
+      .single();
+
+    if (sellerTeam?.user_id) {
+      const { data: player } = await serviceSupabase
+        .from("player")
+        .select("name, full_name")
+        .eq("player_id", listing.player_id)
+        .single();
+
+      const { data: buyerTeamName } = await serviceSupabase
+        .from("teams")
+        .select("name")
+        .eq("id", buyerTeamId)
+        .single();
+
+      const playerName = player?.full_name || player?.name || "A player";
+      const buyerName = buyerTeamName?.name || "a team";
+      const priceStr = `€${(listing.asking_price / 1_000_000).toFixed(1)}M`;
+
+      await serviceSupabase.from("notifications").insert({
+        user_id: sellerTeam.user_id,
+        league_id: sellerTeam.league_id,
+        team_id: sellerTeam.id,
+        type: "transfer_list_sold",
+        title: "Player sold",
+        message: `${playerName} was bought by ${buyerName} for ${priceStr}.`,
+        read: false,
+        link: "/main/dashboard/transfer-list",
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: "Player purchased successfully",

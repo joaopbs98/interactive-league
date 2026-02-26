@@ -56,6 +56,7 @@ const InjuriesPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newInjury, setNewInjury] = useState({
     team_id: "",
@@ -256,8 +257,10 @@ const InjuriesPage = () => {
   };
 
   const filteredInjuries = injuries.filter(injury => {
-    if (activeTab === "all") return true;
-    return injury.type === activeTab;
+    if (activeTab !== "all" && injury.type !== activeTab) return false;
+    if (severityFilter === "minor" && injury.games_remaining > 2) return false;
+    if (severityFilter === "major" && injury.games_remaining <= 2) return false;
+    return true;
   });
 
   const injuryStats = {
@@ -266,6 +269,9 @@ const InjuriesPage = () => {
     suspensions: injuries.filter(i => i.type === 'suspension').length,
     totalGames: injuries.reduce((sum, injury) => sum + injury.games_remaining, 0)
   };
+
+  const myTeamInjuries = injuries.filter(i => selectedTeam && i.team_id === selectedTeam.id);
+  const positionsAffected = [...new Set(myTeamInjuries.map(i => i.player?.positions?.split(",")[0]?.trim()).filter(Boolean))];
 
   // Helper function to safely get player initials
   const getPlayerInitials = (playerName?: string) => {
@@ -457,6 +463,32 @@ const InjuriesPage = () => {
         </Card>
       </div>
 
+      {selectedTeam && myTeamInjuries.length > 0 && (
+        <Card className="bg-amber-900/20 border-amber-800/50">
+          <CardContent className="p-4">
+            <p className="text-sm font-medium">
+              Impact on your squad: {myTeamInjuries.length} player{myTeamInjuries.length !== 1 ? "s" : ""} out
+              {positionsAffected.length > 0 && (
+                <span className="text-muted-foreground"> — positions affected: {positionsAffected.join(", ")}</span>
+              )}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex items-center gap-4">
+        <Select value={severityFilter} onValueChange={setSeverityFilter}>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="Severity" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All severities</SelectItem>
+            <SelectItem value="minor">Minor (1–2 games)</SelectItem>
+            <SelectItem value="major">Major (3+ games)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3">
@@ -482,8 +514,10 @@ const InjuriesPage = () => {
             </CardHeader>
             <CardContent>
               {filteredInjuries.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No {activeTab === 'all' ? 'injuries or suspensions' : activeTab === 'injury' ? 'injuries' : 'suspensions'} found.
+                <div className="text-center py-12 text-muted-foreground">
+                  <UserX className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-medium">No injuries or suspensions</p>
+                  <p className="text-sm mt-1">All players are available for selection.</p>
                 </div>
               ) : (
                 <div className="space-y-4">

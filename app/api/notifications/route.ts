@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
               title: "Pick a sponsor",
               message: "Your team has no sponsor. Sign one during OFFSEASON to receive payments.",
               read: false,
+              link: "/main/dashboard/sponsors",
             });
           }
         }
@@ -97,6 +98,7 @@ export async function GET(request: NextRequest) {
               title: "Contracts ending soon",
               message: `${contracts.length} player(s) have 1 season or less on their contract.`,
               read: false,
+              link: "/main/dashboard/contracts",
             });
           }
         }
@@ -131,6 +133,7 @@ export async function GET(request: NextRequest) {
               title: "Registration required",
               message: "Your squad must have 21–23 players (max 3 GKs) before the season starts.",
               read: false,
+              link: "/main/dashboard/squad",
             });
           }
         }
@@ -139,7 +142,7 @@ export async function GET(request: NextRequest) {
 
     let query = serviceSupabase
       .from("notifications")
-      .select("id, league_id, team_id, type, title, message, read, created_at")
+      .select("id, league_id, team_id, type, title, message, read, created_at, link")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50);

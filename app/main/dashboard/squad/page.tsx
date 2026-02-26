@@ -15,7 +15,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Loader2, Ticket } from "lucide-react";
+import { Ticket, ArrowUpDown, Filter, Users } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatPlayerName } from "@/utils/playerUtils";
 import { getRatingColorClasses } from "@/utils/ratingColors";
 import { Images } from "@/lib/assets";
@@ -150,6 +154,8 @@ function SquadPageContent() {
   const [upgradeTickets, setUpgradeTickets] = useState<UpgradeTicket[]>([]);
   const [ticketDialog, setTicketDialog] = useState<{ ticket: UpgradeTicket } | null>(null);
   const [applyingTicket, setApplyingTicket] = useState(false);
+  const [sortBy, setSortBy] = useState<"rating" | "wage" | "position">("rating");
+  const [filterInjured, setFilterInjured] = useState(false);
 
   // Use leagueId from URL params first, then context (allows direct navigation to squad?league=xxx)
   const leagueId = searchParams.get('league') || searchParams.get('leagueId') || selectedLeagueId || selectedTeam?.league_id || selectedTeam?.leagues?.id;
@@ -211,11 +217,8 @@ function SquadPageContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-lg text-muted-foreground">Loading squad...</p>
-        </div>
+      <div className="container mx-auto p-6">
+        <PageSkeleton variant="page" rows={8} />
       </div>
     );
   }
@@ -248,8 +251,21 @@ function SquadPageContent() {
     );
   }
 
+  const rawSquad = teamData.squad || [];
+  const filteredPlayers = filterInjured
+    ? rawSquad.filter((p) => p.isInjured)
+    : rawSquad;
+  const sortedPlayers = [...filteredPlayers].sort((a, b) => {
+    if (sortBy === "rating") return (b.overall_rating ?? 0) - (a.overall_rating ?? 0);
+    if (sortBy === "wage") return ((b.wage as number) ?? 0) - ((a.wage as number) ?? 0);
+    if (sortBy === "position") return (a.positions || "").localeCompare(b.positions || "");
+    return 0;
+  });
+  const allPlayers = sortedPlayers;
+
+  const totalWage = rawSquad.reduce((s, p) => s + (typeof p.wage === "number" ? p.wage : parseInt(String(p.wage || 0), 10) || 0), 0);
+
   // Group players by position
-  const allPlayers = teamData.squad || [];
   const playersByPosition = allPlayers.reduce((acc, player) => {
     const group = getPositionGroup(player.positions);
     if (!acc[group]) acc[group] = [];
@@ -286,7 +302,7 @@ function SquadPageContent() {
       </div>
 
       {/* Squad Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Players</CardTitle>
@@ -322,6 +338,33 @@ function SquadPageContent() {
             <div className="text-2xl font-bold text-foreground">{teamData.comp_index != null ? teamData.comp_index.toFixed(1) : "—"}</div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Wage</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-foreground">{formatWage(totalWage)}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap gap-4 items-center">
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as "rating" | "wage" | "position")}>
+          <SelectTrigger className="w-40">
+            <ArrowUpDown className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="rating">Rating</SelectItem>
+            <SelectItem value="wage">Wage</SelectItem>
+            <SelectItem value="position">Position</SelectItem>
+          </SelectContent>
+        </Select>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <Checkbox checked={filterInjured} onCheckedChange={(c) => setFilterInjured(!!c)} />
+          <Filter className="h-4 w-4" />
+          Injured only
+        </label>
       </div>
 
       {/* Upgrade Tickets */}
@@ -491,7 +534,15 @@ function SquadList({ players, allPlayers, teamId, leagueId, startingLineup, benc
   const top14Ids = new Set(sortPlayersByRating(allPlayers).slice(0, 14).map((p) => p.player_id));
 
   if (players.length === 0) {
-    return (
+    const isAllEmpty = allPlayers.length === 0;
+    return isAllEmpty ? (
+      <EmptyState
+        icon={Users}
+        title="No players in your squad"
+        description="Build your squad through the Draft, Packs, or Free Agents. You need 21–23 players for registration."
+        action={{ label: "Go to Draft", href: "/main/dashboard/draft" }}
+      />
+    ) : (
       <div className="text-center py-12 text-muted-foreground">
         No players in this category.
       </div>

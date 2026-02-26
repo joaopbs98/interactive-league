@@ -24,6 +24,9 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Toaster, toast } from "sonner";
 import { useLeague } from "@/contexts/LeagueContext";
+import { EmptyState } from "@/components/EmptyState";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { Shuffle } from "lucide-react";
 
 interface Team {
   id: string | number;
@@ -315,6 +318,14 @@ export default function TradeCenterPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={4} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 space-y-6">
       <Toaster position="top-center" richColors />
@@ -484,9 +495,16 @@ export default function TradeCenterPage() {
           <CardTitle>Pending Trades</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {pending.length === 0 && (
+          {trades.length === 0 ? (
+            <EmptyState
+              icon={Shuffle}
+              title="No trades yet"
+              description="Propose a trade to another team to swap players, draft picks, or money. Use the button above to get started."
+              action={{ label: "Propose Trade", onClick: () => setProposeOpen(true) }}
+            />
+          ) : pending.length === 0 ? (
             <p className="text-muted-foreground">No pending trades.</p>
-          )}
+          ) : null}
           {pending.map((t) => (
             <div
               key={t.id}

@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
         id: p.player_id,
         name: p.full_name || p.player_name || p.player_id,
         position: posStr,
+        rating: p.rating,
         image: "",
       };
     });

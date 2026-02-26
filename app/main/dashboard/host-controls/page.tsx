@@ -11,11 +11,20 @@ import { Separator } from "@/components/ui/separator";
 import { useLeague } from "@/contexts/LeagueContext";
 import {
   Calendar, Users, Trophy, Settings, Play, StopCircle, Gavel,
-  AlertTriangle, ScrollText, Loader2, Shield, Zap, DollarSign, UserPlus, BarChart3, UserPlus2, Trash2
+  AlertTriangle, ScrollText, Loader2, Shield, Zap, DollarSign, UserPlus, BarChart3, UserPlus2, Trash2, BookOpen
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import Link from "next/link";
-import { HostChecklist } from "@/components/host/HostChecklist";
+import { Toaster, toast } from "sonner";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type LeagueInfo = {
   id: string;
@@ -36,6 +45,11 @@ type LeagueInfo = {
   has_ucl_matches?: boolean;
   has_uel_matches?: boolean;
   has_uecl_matches?: boolean;
+  has_supercup_matches?: boolean;
+  scheduled_ucl_this_round?: number;
+  scheduled_uel_this_round?: number;
+  scheduled_uecl_this_round?: number;
+  scheduled_supercup_this_round?: number;
 };
 
 type TeamInfo = { id: string; name: string; acronym: string };
@@ -58,68 +72,6 @@ type MatchRow = {
   away_team?: { name: string; acronym?: string };
 };
 
-const HOF_STAGES = [
-  "UCL Winners", "UCL Finalist", "UCL Semi-Finalist", "UCL Group Stage",
-  "UEL Winners", "UEL Finalist", "UEL Semi-Finalist", "UEL Group Stage",
-  "UECL Winners", "UECL Finalist", "UECL Semi-Finalist", "UECL Group Stage",
-];
-
-function CompetitionResultForm({
-  leagueId,
-  league,
-  teams,
-  onSave,
-  actionLoading,
-}: {
-  leagueId: string;
-  league: LeagueInfo | null;
-  teams: TeamInfo[];
-  onSave: (action: string, params: Record<string, unknown>) => Promise<void>;
-  actionLoading: string | null;
-}) {
-  const [teamId, setTeamId] = useState("");
-  const [stage, setStage] = useState("");
-
-  const handleSave = () => {
-    if (!teamId || !stage) return;
-    onSave("set_competition_result", { teamId, season: league?.season, stage });
-    setTeamId("");
-    setStage("");
-  };
-
-  return (
-    <div className="flex flex-wrap gap-2 items-end">
-      <Select value={teamId} onValueChange={setTeamId}>
-        <SelectTrigger className="w-40">
-          <SelectValue placeholder="Team" />
-        </SelectTrigger>
-        <SelectContent>
-          {teams.map((t) => (
-            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select value={stage} onValueChange={setStage}>
-        <SelectTrigger className="w-48">
-          <SelectValue placeholder="Stage" />
-        </SelectTrigger>
-        <SelectContent>
-          {HOF_STAGES.map((s) => (
-            <SelectItem key={s} value={s}>{s}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Button
-        onClick={handleSave}
-        disabled={actionLoading === "set_competition_result" || !teamId || !stage}
-        size="sm"
-      >
-        {actionLoading === "set_competition_result" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Set"}
-      </Button>
-    </div>
-  );
-}
-
 const SPONSOR_OBJECTIVES = [
   { code: "POSITION_4", label: "Top 4 finish" },
   { code: "POSITION_6", label: "Top 6 finish" },
@@ -141,6 +93,7 @@ function SeasonSponsorsCard({
 }) {
   const [allSponsors, setAllSponsors] = useState<{ id: string; name: string }[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [canPickSponsor, setCanPickSponsor] = useState(true);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -160,6 +113,7 @@ function SeasonSponsorsCard({
       const leagueData = await leagueRes.json();
       setAllSponsors(allData.sponsors || []);
       setSelectedIds(leagueData.sponsorIds || []);
+      setCanPickSponsor(leagueData.canPickSponsor !== false);
     } finally {
       setLoading(false);
     }
@@ -187,9 +141,10 @@ function SeasonSponsorsCard({
       });
       const json = await res.json();
       if (json.success) {
+        toast.success("Sponsors saved");
         onSuccess();
       } else {
-        alert(json.error || "Failed");
+        toast.error(json.error || "Failed");
       }
     } finally {
       setActionLoading(false);
@@ -214,11 +169,12 @@ function SeasonSponsorsCard({
       });
       const json = await res.json();
       if (json.success) {
+        toast.success("Sponsor created");
         setCreateName("");
         await fetchData();
         onSuccess();
       } else {
-        alert(json.error || "Failed");
+        toast.error(json.error || "Failed");
       }
     } finally {
       setActionLoading(false);
@@ -272,6 +228,11 @@ function SeasonSponsorsCard({
       </div>
       <Separator />
       <div className="space-y-2">
+        {!canPickSponsor && (
+          <p className="text-xs text-amber-500">
+            Sponsors can only be changed in contract-start seasons (S2, S5, S7, S9). Current selection applies for the contract window.
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">Select up to 3 sponsors ({selectedIds.length}/3)</p>
         <div className="space-y-1 max-h-32 overflow-y-auto">
           {allSponsors.map((s) => (
@@ -286,7 +247,7 @@ function SeasonSponsorsCard({
             </label>
           ))}
         </div>
-        <Button size="sm" onClick={handleSave} disabled={actionLoading}>
+        <Button size="sm" onClick={handleSave} disabled={actionLoading || !canPickSponsor}>
           {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save 3 Sponsors"}
         </Button>
       </div>
@@ -351,10 +312,11 @@ function DraftPoolCard({
       });
       const json = await res.json();
       if (json.success) {
+        toast.success("Added to draft pool");
         await fetchPool();
         onSuccess();
       } else {
-        alert(json.error || "Failed");
+        toast.error(json.error || "Failed");
       }
     } finally {
       setActionLoading(false);
@@ -371,10 +333,11 @@ function DraftPoolCard({
       });
       const json = await res.json();
       if (json.success) {
+        toast.success("Removed from draft pool");
         await fetchPool();
         onSuccess();
       } else {
-        alert(json.error || "Failed");
+        toast.error(json.error || "Failed");
       }
     } finally {
       setActionLoading(false);
@@ -454,12 +417,14 @@ function FreeAgencyPoolCard({
   onSuccess: () => void;
 }) {
   const [poolIds, setPoolIds] = useState<string[]>([]);
-  const [poolDetails, setPoolDetails] = useState<{ player_id: string; player_name?: string; rating?: number }[]>([]);
-  const [deadline, setDeadline] = useState("");
+  const [poolDetails, setPoolDetails] = useState<{ player_id: string; player_name?: string; rating?: number; deadline?: string | null }[]>([]);
+  const [faPoolStatus, setFaPoolStatus] = useState<"draft" | "confirmed">("draft");
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<{ player_id: string; name: string; full_name: string | null; positions: string; overall_rating: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [addModal, setAddModal] = useState<{ player_id: string; name: string } | null>(null);
+  const [addDeadline, setAddDeadline] = useState("");
 
   const fetchPool = async () => {
     if (!leagueId) return;
@@ -470,12 +435,7 @@ function FreeAgencyPoolCard({
       if (json.success) {
         setPoolIds(json.data || []);
         setPoolDetails(json.poolDetails || []);
-        if (json.fa_deadline) {
-          const d = new Date(json.fa_deadline);
-          setDeadline(d.toISOString().slice(0, 16));
-        } else {
-          setDeadline("");
-        }
+        setFaPoolStatus(json.fa_pool_status ?? "draft");
       }
     } finally {
       setLoading(false);
@@ -498,20 +458,35 @@ function FreeAgencyPoolCard({
     }
   };
 
-  const handleAddToPool = async (playerId: string) => {
+  const openAddModal = (p: { player_id: string; name: string; full_name: string | null }) => {
+    setAddModal({ player_id: p.player_id, name: p.name || p.full_name || p.player_id });
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 2);
+    setAddDeadline(defaultDate.toISOString().slice(0, 16));
+  };
+
+  const handleAddToPool = async () => {
+    if (!addModal || !addDeadline) return;
     setActionLoading(true);
     try {
       const res = await fetch("/api/league/fa-pool", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "add", leagueId, playerIds: [playerId] }),
+        body: JSON.stringify({
+          action: "add",
+          leagueId,
+          playerIds: [addModal.player_id],
+          playerDeadlines: { [addModal.player_id]: new Date(addDeadline).toISOString() },
+        }),
       });
       const json = await res.json();
       if (json.success) {
+        toast.success(`Added ${addModal.name} to pool`);
+        setAddModal(null);
         await fetchPool();
         onSuccess();
       } else {
-        alert(json.error || "Failed");
+        toast.error(json.error || "Failed");
       }
     } finally {
       setActionLoading(false);
@@ -528,38 +503,63 @@ function FreeAgencyPoolCard({
       });
       const json = await res.json();
       if (json.success) {
+        toast.success("Removed from pool");
         await fetchPool();
         onSuccess();
       } else {
-        alert(json.error || "Failed");
+        toast.error(json.error || "Failed");
       }
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleSetDeadline = async () => {
+  const handleConfirmPool = async () => {
     setActionLoading(true);
     try {
       const res = await fetch("/api/league/fa-pool", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "setDeadline",
-          leagueId,
-          deadlineAt: deadline ? new Date(deadline).toISOString() : null,
-        }),
+        body: JSON.stringify({ action: "confirmPool", leagueId }),
       });
       const json = await res.json();
       if (json.success) {
+        toast.success("Pool confirmed – visible to managers");
+        setFaPoolStatus("confirmed");
+        await fetchPool();
         onSuccess();
       } else {
-        alert(json.error || "Failed");
+        toast.error(json.error || "Failed");
       }
     } finally {
       setActionLoading(false);
     }
   };
+
+  const handleResetPool = async () => {
+    if (!confirm("Reset pool to draft? Managers will no longer see it. You can add/remove players again.")) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/league/fa-pool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resetPool", leagueId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success("Pool reset to draft");
+        setFaPoolStatus("draft");
+        await fetchPool();
+        onSuccess();
+      } else {
+        toast.error(json.error || "Failed");
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const isDraft = faPoolStatus === "draft";
 
   if (league?.status !== "OFFSEASON") {
     return <p className="text-sm text-muted-foreground">League must be OFFSEASON</p>;
@@ -571,6 +571,9 @@ function FreeAgencyPoolCard({
 
   return (
     <div className="space-y-4">
+      {faPoolStatus === "confirmed" && (
+        <p className="text-xs text-green-500 font-medium">Pool confirmed – visible to managers. Resolve Free Agency when bids are in.</p>
+      )}
       <div className="flex gap-2">
         <Input
           placeholder="Search player name"
@@ -578,14 +581,15 @@ function FreeAgencyPoolCard({
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           className="flex-1"
+          disabled={!isDraft}
         />
-        <Button onClick={handleSearch} disabled={actionLoading}>
+        <Button onClick={handleSearch} disabled={actionLoading || !isDraft}>
           {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
         </Button>
       </div>
-      {searchResults.length > 0 && (
+      {searchResults.length > 0 && isDraft && (
         <div className="space-y-1 max-h-32 overflow-y-auto">
-          <p className="text-xs font-medium text-muted-foreground">Add to pool:</p>
+          <p className="text-xs font-medium text-muted-foreground">Add to pool (set deadline per player):</p>
           {searchResults.map((p) => (
             <div key={p.player_id} className="flex items-center justify-between gap-2 py-1 text-sm">
               <span>{p.name || p.full_name || p.player_id} ({p.overall_rating})</span>
@@ -593,7 +597,7 @@ function FreeAgencyPoolCard({
                 size="sm"
                 variant="outline"
                 disabled={actionLoading || poolIds.includes(p.player_id)}
-                onClick={() => handleAddToPool(p.player_id)}
+                onClick={() => openAddModal(p)}
               >
                 {poolIds.includes(p.player_id) ? "In pool" : "Add"}
               </Button>
@@ -601,30 +605,17 @@ function FreeAgencyPoolCard({
           ))}
         </div>
       )}
-      <div className="space-y-2">
-        <Label className="text-xs">Bid deadline (optional)</Label>
-        <div className="flex gap-2">
-          <Input
-            type="datetime-local"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-          />
-          <Button size="sm" onClick={handleSetDeadline} disabled={actionLoading}>
-            {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Set"}
-          </Button>
-        </div>
-      </div>
       {poolDetails.length > 0 && (
         <div className="space-y-1 max-h-32 overflow-y-auto">
           <p className="text-xs font-medium text-muted-foreground">Pool ({poolDetails.length} players)</p>
           {poolDetails.map((p) => (
             <div key={p.player_id} className="flex items-center justify-between gap-2 py-1 text-sm">
-              <span>{p.player_name || p.player_id} ({p.rating ?? "?"})</span>
+              <span>{p.player_name || p.player_id} ({p.rating ?? "?"}){p.deadline ? ` · ${new Date(p.deadline).toLocaleString()}` : ""}</span>
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-7 text-destructive hover:text-destructive"
-                disabled={actionLoading}
+                disabled={actionLoading || !isDraft}
                 onClick={() => handleRemoveFromPool(p.player_id)}
               >
                 {actionLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
@@ -633,6 +624,135 @@ function FreeAgencyPoolCard({
           ))}
         </div>
       )}
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="default"
+          disabled={actionLoading || poolDetails.length === 0 || !isDraft}
+          onClick={handleConfirmPool}
+        >
+          {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Pool"}
+        </Button>
+        {!isDraft && (
+          <Button size="sm" variant="outline" disabled={actionLoading} onClick={handleResetPool}>
+            Reset to Draft
+          </Button>
+        )}
+      </div>
+      <Dialog open={!!addModal} onOpenChange={(open) => !open && setAddModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add to pool</DialogTitle>
+            <DialogDescription>Set bid deadline for {addModal?.name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Bid deadline</Label>
+              <Input
+                type="datetime-local"
+                value={addDeadline}
+                onChange={(e) => setAddDeadline(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddModal(null)}>Cancel</Button>
+            <Button onClick={handleAddToPool} disabled={actionLoading || !addDeadline}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function PopulateInternationalCard({
+  leagueId,
+  league,
+  onSuccess,
+}: {
+  leagueId: string;
+  league: LeagueInfo | null;
+  onSuccess: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
+
+  const handlePopulate = async () => {
+    if (!leagueId || !league) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/league/populate-international", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId, season: league.season }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Created ${json.matches_created ?? 0} international match(es). You can adjust teams on the Schedule page.`);
+        onSuccess();
+      } else {
+        toast.error(json.error || "Failed to populate");
+      }
+    } catch (err) {
+      toast.error("Request failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!leagueId || !league) return;
+    setClearLoading(true);
+    try {
+      const res = await fetch("/api/league/populate-international", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId, season: league.season }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`Cleared ${json.deleted ?? 0} international match(es).`);
+        onSuccess();
+      } else {
+        toast.error(json.error || "Failed to clear");
+      }
+    } catch (err) {
+      toast.error("Request failed");
+    } finally {
+      setClearLoading(false);
+    }
+  };
+
+  return (
+    <div className="pt-2 border-t border-neutral-800 space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Auto-fill from current season domestic standings. Allocation scales with league size (14-team basis: UCL ~43%, UECL ~29%, UEL ~29%). Super Cup (UCL vs UEL winners from previous season) from S2. Host can edit groups on Schedule.
+      </p>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
+          disabled={loading}
+          onClick={handlePopulate}
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trophy className="h-4 w-4 mr-2" />}
+          Populate International Schedule
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 text-destructive hover:text-destructive"
+          disabled={clearLoading}
+          onClick={handleClear}
+        >
+          {clearLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+          Clear International
+        </Button>
+      </div>
     </div>
   );
 }
@@ -845,45 +965,55 @@ export default function HostControlsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        // For resolve_free_agency, show count
+        let successMsg = '';
         if (action === 'validate_registration' && data.data) {
           if (data.data.valid) {
-            setMessage({ type: 'success', text: 'All teams pass registration (21-23 players, max 3 GKs)' });
+            successMsg = 'All teams pass registration (21-23 players, max 3 GKs)';
+            setMessage({ type: 'success', text: successMsg });
           } else {
             const invalid = data.data.invalid_teams || [];
             const msg = invalid.map((t: { team_name: string; errors: string[] }) => `${t.team_name}: ${(t.errors || []).join(', ')}`).join('; ');
             setMessage({ type: 'error', text: `Registration invalid: ${msg}` });
+            toast.error(`Registration invalid: ${msg}`);
           }
         } else if (action === 'resolve_free_agency' && data.data?.assigned !== undefined) {
-          setMessage({ type: 'success', text: `Assigned ${data.data.assigned} player(s) to winning teams` });
-        }
-        // For add_mock_teams, show count
-        else if (action === 'add_mock_teams' && data.data?.added !== undefined) {
-          setMessage({ type: 'success', text: `Added ${data.data.added} mock team(s)` });
-        }
-        // For generate_all_starter_squads, show detailed result
-        else if (action === 'generate_all_starter_squads' && data.data) {
+          successMsg = `Assigned ${data.data.assigned} player(s) to winning teams`;
+          setMessage({ type: 'success', text: successMsg });
+        } else if (action === 'add_mock_teams' && data.data?.added !== undefined) {
+          successMsg = `Added ${data.data.added} mock team(s)`;
+          setMessage({ type: 'success', text: successMsg });
+        } else if (action === 'generate_all_starter_squads' && data.data) {
           const { generated, total, results } = data.data;
           const failed = results?.filter((r: { success: boolean }) => !r.success) || [];
           if (total === 0) {
-            setMessage({ type: 'success', text: 'No empty teams to process' });
-          } else if (generated === total) {
-            setMessage({ type: 'success', text: `Generated starter squads for ${generated} team(s)` });
+            successMsg = 'No empty teams to process';
           } else if (failed.length > 0) {
             const errMsg = failed[0]?.error || 'Unknown error';
             setMessage({ type: 'error', text: `Generated ${generated}/${total}. Error: ${errMsg}` });
+            toast.error(`Generated ${generated}/${total}. Error: ${errMsg}`);
           } else {
-            setMessage({ type: 'success', text: `Generated starter squads for ${generated} team(s)` });
+            successMsg = `Generated starter squads for ${generated} team(s)`;
           }
+          if (successMsg) setMessage({ type: 'success', text: successMsg });
         } else {
-          setMessage({ type: 'success', text: `${action} completed successfully` });
+          successMsg = action === 'simulate_matchday' ? 'Matchday simulated'
+            : action.startsWith('simulate_matchday_competition') ? 'Competition matchday simulated'
+            : action === 'end_season' ? 'Season ended'
+            : action === 'insert_result' ? 'Result inserted'
+            : `${action.replace(/_/g, ' ')} completed`;
+          setMessage({ type: 'success', text: successMsg });
         }
+        if (successMsg) toast.success(successMsg);
         await fetchAll();
       } else {
-        setMessage({ type: 'error', text: data.error || 'Action failed' });
+        const errText = data.error || 'Action failed';
+        setMessage({ type: 'error', text: errText });
+        toast.error(errText);
       }
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+      const errText = err.message || 'Request failed';
+      setMessage({ type: 'error', text: errText });
+      toast.error(errText);
     } finally {
       setActionLoading(null);
     }
@@ -916,8 +1046,8 @@ export default function HostControlsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={8} />
       </div>
     );
   }
@@ -938,17 +1068,18 @@ export default function HostControlsPage() {
 
   return (
     <div className="p-8 flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <Toaster position="top-center" richColors />
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <h2 className="text-2xl font-bold">Host Controls</h2>
-        {league && <StatusBadge status={league.status} />}
+        <div className="flex items-center gap-4">
+          <Link href="/main/dashboard/host-manual">
+            <Button variant="outline">
+              <BookOpen className="h-4 w-4 mr-2" /> Host Manual
+            </Button>
+          </Link>
+          {league && <StatusBadge status={league.status} />}
+        </div>
       </div>
-
-      <HostChecklist
-        leagueId={leagueId ?? ""}
-        league={league}
-        teams={teams}
-        onRefresh={fetchAll}
-      />
 
       {/* Host Teams - Commissioner only */}
       {isCommissioner && (
@@ -983,9 +1114,12 @@ export default function HostControlsPage() {
                           });
                           setHostTeamIds((prev) => new Set([...prev, t.id]));
                         }
-                        setMessage({ type: "success", text: isHostTeam ? `Removed host rights from ${t.name}` : `Granted host rights to ${t.name}` });
+                        const msg = isHostTeam ? `Removed host rights from ${t.name}` : `Granted host rights to ${t.name}`;
+                        setMessage({ type: "success", text: msg });
+                        toast.success(msg);
                       } catch {
                         setMessage({ type: "error", text: "Failed to update host teams" });
+                        toast.error("Failed to update host teams");
                       }
                     }}
                   >
@@ -1004,18 +1138,56 @@ export default function HostControlsPage() {
         </div>
       )}
 
-      {/* League Settings (Transfer Window, Match Mode) */}
+      {/* League Settings (In Season/Off Season, Transfer Window, Match Mode) */}
       {league && (
         <Card className="bg-neutral-900 border-neutral-800">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2"><Settings className="h-5 w-5" /> League Settings</CardTitle>
-            <CardDescription>Transfer window and match mode. Changes apply immediately.</CardDescription>
+            <CardDescription>Phase, transfer window and match mode. Changes apply immediately.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col sm:flex-row gap-6">
+          <CardContent className="flex flex-col gap-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-sm font-medium">In Season</Label>
+                <p className="text-xs text-muted-foreground">League phase. Off = Off Season (sponsors, FA, draft). On = In Season (matches).</p>
+              </div>
+              <Switch
+                checked={league.status === "IN_SEASON"}
+                disabled={settingsLoading}
+                onCheckedChange={async (checked) => {
+                  const newStatus = checked ? "IN_SEASON" : "OFFSEASON";
+                  if (!confirm(`Switch league to ${newStatus.replace("_", " ")}? This affects sponsors, FA, trades, and match simulation.`)) return;
+                  setSettingsLoading(true);
+                  try {
+                    const res = await fetch("/api/league/settings", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ leagueId, status: newStatus }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setLeague((prev) => (prev ? { ...prev, status: newStatus } : null));
+                      const msg = `League set to ${newStatus.replace("_", " ")}`;
+                      setMessage({ type: "success", text: msg });
+                      toast.success(msg);
+                    } else {
+                      const err = data.error || "Failed to update";
+                      setMessage({ type: "error", text: err });
+                      toast.error(err);
+                    }
+                  } catch (e: unknown) {
+                    setMessage({ type: "error", text: e instanceof Error ? e.message : "Failed" });
+                  } finally {
+                    setSettingsLoading(false);
+                  }
+                }}
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <Label className="text-sm font-medium">Transfer Window Open</Label>
-                <p className="text-xs text-muted-foreground">When open, managers can make roster moves (trades, signings, etc.)</p>
+                <p className="text-xs text-muted-foreground">When open (and In Season), managers can make roster moves (trades, signings, etc.)</p>
               </div>
               <Switch
                 checked={league.transfer_window_open ?? true}
@@ -1032,8 +1204,11 @@ export default function HostControlsPage() {
                     if (data.success) {
                       setLeague(prev => prev ? { ...prev, transfer_window_open: checked } : null);
                       setMessage({ type: 'success', text: 'Transfer window updated' });
+                      toast.success('Transfer window updated');
                     } else {
-                      setMessage({ type: 'error', text: data.error || 'Failed to update' });
+                      const err = data.error || 'Failed to update';
+                      setMessage({ type: 'error', text: err });
+                      toast.error(err);
                     }
                   } catch (e: any) {
                     setMessage({ type: 'error', text: e.message });
@@ -1063,8 +1238,11 @@ export default function HostControlsPage() {
                     if (data.success) {
                       setLeague(prev => prev ? { ...prev, match_mode: value } : null);
                       setMessage({ type: 'success', text: 'Match mode updated' });
+                      toast.success('Match mode updated');
                     } else {
-                      setMessage({ type: 'error', text: data.error || 'Failed to update' });
+                      const err = data.error || 'Failed to update';
+                      setMessage({ type: 'error', text: err });
+                      toast.error(err);
                     }
                   } catch (e: any) {
                     setMessage({ type: 'error', text: e.message });
@@ -1081,6 +1259,7 @@ export default function HostControlsPage() {
                   <SelectItem value="MANUAL">Manual</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
             </div>
           </CardContent>
         </Card>
@@ -1151,13 +1330,16 @@ export default function HostControlsPage() {
             <CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4" /> Schedule</CardTitle>
             <CardDescription>Generate round-robin or manually create fixtures. Full schedule management on its own page.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
             <Link href="/main/dashboard/schedule">
               <Button variant="outline" className="w-full">
                 <Calendar className="h-4 w-4 mr-2" />
                 Manage Schedule
               </Button>
             </Link>
+            {((league?.status === "OFFSEASON") || (league?.status === "IN_SEASON" && (league?.current_round ?? 0) > (league?.total_rounds ?? 0))) && (
+              <PopulateInternationalCard leagueId={leagueId ?? ""} league={league} onSuccess={fetchAll} />
+            )}
           </CardContent>
         </Card>
 
@@ -1171,17 +1353,30 @@ export default function HostControlsPage() {
           <CardContent className="space-y-2">
             <Button
               onClick={() => performAction('simulate_matchday')}
-              disabled={actionLoading === 'simulate_matchday' || league?.status !== 'IN_SEASON'}
+              disabled={
+                actionLoading === 'simulate_matchday' ||
+                league?.status !== 'IN_SEASON' ||
+                (league?.current_round ?? 0) > (league?.total_rounds ?? 0)
+              }
               className="w-full bg-green-700 hover:bg-green-800"
             >
               {actionLoading === 'simulate_matchday' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
               Simulate Domestic Round {league?.current_round || '?'}
             </Button>
+            {(league?.current_round ?? 0) > (league?.total_rounds ?? 0) && (
+              <p className="text-xs text-muted-foreground">
+                All domestic rounds finished. Populate international schedule (Schedule card above), verify groups on Manage Schedule, then simulate or insert international results. Run End Season when all competitions are done.
+              </p>
+            )}
             {league?.has_ucl_matches && (
               <Button
                 variant="outline"
                 onClick={() => performAction('simulate_matchday_competition', { competitionType: 'ucl' })}
-                disabled={actionLoading === 'simulate_matchday_competition_ucl' || league?.status !== 'IN_SEASON'}
+                disabled={
+                  actionLoading === 'simulate_matchday_competition_ucl' ||
+                  league?.status !== 'IN_SEASON' ||
+                  (league?.scheduled_ucl_this_round ?? 0) === 0
+                }
                 className="w-full"
               >
                 {actionLoading === 'simulate_matchday_competition_ucl' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
@@ -1192,7 +1387,11 @@ export default function HostControlsPage() {
               <Button
                 variant="outline"
                 onClick={() => performAction('simulate_matchday_competition', { competitionType: 'uel' })}
-                disabled={actionLoading === 'simulate_matchday_competition_uel' || league?.status !== 'IN_SEASON'}
+                disabled={
+                  actionLoading === 'simulate_matchday_competition_uel' ||
+                  league?.status !== 'IN_SEASON' ||
+                  (league?.scheduled_uel_this_round ?? 0) === 0
+                }
                 className="w-full"
               >
                 {actionLoading === 'simulate_matchday_competition_uel' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
@@ -1203,11 +1402,30 @@ export default function HostControlsPage() {
               <Button
                 variant="outline"
                 onClick={() => performAction('simulate_matchday_competition', { competitionType: 'uecl' })}
-                disabled={actionLoading === 'simulate_matchday_competition_uecl' || league?.status !== 'IN_SEASON'}
+                disabled={
+                  actionLoading === 'simulate_matchday_competition_uecl' ||
+                  league?.status !== 'IN_SEASON' ||
+                  (league?.scheduled_uecl_this_round ?? 0) === 0
+                }
                 className="w-full"
               >
                 {actionLoading === 'simulate_matchday_competition_uecl' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
                 Simulate UECL Matchday {(league?.current_round_uecl ?? 0) || 1}
+              </Button>
+            )}
+            {league?.has_supercup_matches && (
+              <Button
+                variant="outline"
+                onClick={() => performAction('simulate_matchday_competition', { competitionType: 'supercup' })}
+                disabled={
+                  actionLoading === 'simulate_matchday_competition_supercup' ||
+                  league?.status !== 'IN_SEASON' ||
+                  (league?.scheduled_supercup_this_round ?? 0) === 0
+                }
+                className="w-full"
+              >
+                {actionLoading === 'simulate_matchday_competition_supercup' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+                Simulate Super Cup
               </Button>
             )}
             {league?.status !== 'IN_SEASON' && <p className="text-xs text-muted-foreground">League must be IN_SEASON</p>}
@@ -1256,23 +1474,6 @@ export default function HostControlsPage() {
           </CardContent>
         </Card>
         )}
-
-        {/* Set Competition Result (for HOF) */}
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2"><Trophy className="h-4 w-4" /> Competition Stage</CardTitle>
-            <CardDescription>Set each team&apos;s competition stage for HOF points (UCL Winners=10, UEL Group=2, etc.). Set before End Season.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CompetitionResultForm
-              leagueId={leagueId ?? ""}
-              league={league}
-              teams={teams}
-              onSave={performAction}
-              actionLoading={actionLoading}
-            />
-          </CardContent>
-        </Card>
 
         {/* End Season */}
         <Card className="bg-neutral-900 border-neutral-800">
