@@ -1,296 +1,441 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { useLeague } from "@/contexts/LeagueContext";
+import { Loader2, Search, UserPlus, Gavel, Trash2, History, ChevronDown, ChevronUp } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { freeAgentPointsValue } from "@/lib/freeAgentPoints";
+import { getRatingColors } from "@/utils/ratingColors";
 import { Images } from "@/lib/assets";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-type Player = {
-  id: number;
-  name: string;
-  position: string;
-  overall: number;
-  avatar: any;
-  bestOfferTeam: string;
-  bestOfferPoints: number;
+type FreeAgent = {
+  id: string;
+  player_id: string;
+  player_name: string;
+  full_name: string | null;
+  positions: string;
+  rating: number;
+  image: string | null;
+  deadline?: string | null;
+  myBid?: { bonus: number; salary: number; years: number; guaranteed_pct?: number; no_trade_clause?: boolean } | null;
 };
 
-const INITIAL_PLAYERS: Player[] = [
-  {
-    id: 1,
-    name: "João Neves",
-    position: "CM",
-    overall: 82,
-    avatar: Images.JN,
-    bestOfferTeam: "None",
-    bestOfferPoints: 0,
-  },
-  {
-    id: 2,
-    name: "Karim Benzema",
-    position: "ST",
-    overall: 88,
-    avatar: Images.JN,
-    bestOfferTeam: "None",
-    bestOfferPoints: 0,
-  },
-  {
-    id: 3,
-    name: "Neymar Jr",
-    position: "LW",
-    overall: 91,
-    avatar: Images.JN,
-    bestOfferTeam: "None",
-    bestOfferPoints: 0,
-  },
-  {
-    id: 4,
-    name: "Kevin De Bruyne",
-    position: "CM",
-    overall: 91,
-    avatar: Images.JN,
-    bestOfferTeam: "None",
-    bestOfferPoints: 0,
-  },
-];
+type HistoryItem = {
+  player_id: string;
+  player_name: string;
+  winner_team: string;
+  winner_acronym?: string;
+  salary: number;
+  years: number;
+  resolved_at: string;
+};
 
-export default function FreeAgencyPage() {
-  const [players, setPlayers] = useState<Player[]>(INITIAL_PLAYERS);
-  const [offerPlayer, setOfferPlayer] = useState<Player | null>(null);
+function Countdown({ deadline }: { deadline: string }) {
+  const [remaining, setRemaining] = useState<string>("");
 
-  const [bonus, setBonus] = useState(0);
-  const [wage, setWage] = useState(0);
-  const [length, setLength] = useState(1);
-  const [guaranteed, setGuaranteed] = useState(50);
-  const [noTrade, setNoTrade] = useState(false);
+  useEffect(() => {
+    const update = () => {
+      const end = new Date(deadline).getTime();
+      const now = Date.now();
+      const diff = end - now;
+      if (diff <= 0) {
+        setRemaining("Closed");
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setRemaining(`${h}h ${m}m ${s}s`);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [deadline]);
 
-  const contractValue = useMemo(
-    () => bonus + wage * length * 12,
-    [bonus, wage, length]
+  return <span className="text-xs font-mono text-muted-foreground">{remaining}</span>;
+}
+
+export default function FreeAgentsPage() {
+  const { selectedLeagueId, selectedTeam } = useLeague();
+  const [agents, setAgents] = useState<FreeAgent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [signingId, setSigningId] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [bidModal, setBidModal] = useState<FreeAgent | null>(null);
+  const [bidSalary, setBidSalary] = useState("");
+  const [bidYears, setBidYears] = useState("2");
+  const [bidGuaranteedPct, setBidGuaranteedPct] = useState("100");
+  const [bidNoTradeClause, setBidNoTradeClause] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedLeagueId) {
+      fetchAgents();
+      fetchHistory();
+    }
+  }, [selectedLeagueId]);
+
+  const fetchAgents = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/freeagents?leagueId=${selectedLeagueId}${selectedTeam?.id ? `&teamId=${selectedTeam.id}` : ""}`
+      );
+      const data = await res.json();
+      if (data.success) {
+        setAgents(data.data || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchHistory = async () => {
+    if (!selectedLeagueId) return;
+    try {
+      const res = await fetch(`/api/freeagents?leagueId=${selectedLeagueId}&mode=history`);
+      const data = await res.json();
+      if (data.success) setHistory(data.data || []);
+    } catch {
+      // ignore
+    }
+  };
+
+  const openBidModal = (agent: FreeAgent) => {
+    setBidModal(agent);
+    setBidSalary(agent.myBid?.salary?.toString() ?? "");
+    setBidYears(agent.myBid?.years?.toString() ?? "2");
+    setBidGuaranteedPct(agent.myBid?.guaranteed_pct != null ? String(Math.round((agent.myBid.guaranteed_pct as number) * 100)) : "100");
+    setBidNoTradeClause(!!agent.myBid?.no_trade_clause);
+  };
+
+  const handlePlaceBid = async () => {
+    if (!bidModal || !selectedTeam?.id) return;
+    setSigningId(bidModal.player_id);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/freeagents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "placeBid",
+          leagueId: selectedLeagueId,
+          teamId: selectedTeam.id,
+          playerId: bidModal.player_id,
+          signingBonus: 0,
+          salaryPerYear: parseInt(bidSalary, 10) || 0,
+          contractYears: parseInt(bidYears, 10) || 2,
+          guaranteedPct: (parseInt(bidGuaranteedPct, 10) || 100) / 100,
+          noTradeClause: bidNoTradeClause,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "success", text: "Bid placed! Host will resolve free agency." });
+        setBidModal(null);
+        fetchAgents();
+      } else {
+        setMessage({ type: "error", text: data.error });
+      }
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setSigningId(null);
+    }
+  };
+
+  const handleSign = async (playerId: string) => {
+    setSigningId(playerId);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/freeagents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sign',
+          leagueId: selectedLeagueId,
+          teamId: selectedTeam?.id,
+          playerId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: 'success', text: `Signed ${data.data.player_name}!` });
+        fetchAgents();
+      } else {
+        setMessage({ type: 'error', text: data.error });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSigningId(null);
+    }
+  };
+
+  const isHost = selectedTeam?.leagues?.is_host ?? (selectedTeam?.leagues?.commissioner_user_id === selectedTeam?.user_id);
+  const pointsPreview = bidModal && bidSalary && bidYears
+    ? freeAgentPointsValue(
+        parseInt(bidSalary, 10) * parseInt(bidYears, 10),
+        (parseInt(bidGuaranteedPct, 10) || 100) / 100,
+        parseInt(bidYears, 10) || 2,
+        bidNoTradeClause
+      ).toFixed(2)
+    : null;
+
+  const handleClearBids = async () => {
+    if (!selectedLeagueId || !isHost) return;
+    setMessage(null);
+    try {
+      const res = await fetch("/api/freeagents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear", leagueId: selectedLeagueId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "success", text: "All pending bids cleared" });
+        fetchAgents();
+      } else {
+        setMessage({ type: "error", text: data.error });
+      }
+    } catch (err: any) {
+      setMessage({ type: "error", text: err.message });
+    }
+  };
+
+  const filtered = agents.filter(a =>
+    (a.player_name || '').toLowerCase().includes(search.toLowerCase()) ||
+    (a.positions || '').toLowerCase().includes(search.toLowerCase())
   );
-  const offerPoints = useMemo(() => {
-    const H = contractValue,
-      E = length,
-      G = guaranteed / 100;
-    const base =
-      E > 1
-        ? (H / 100000) * (1 + 0.8 * Math.sin(((G - 0.5) * Math.PI) / 2))
-        : H / 100000;
-    return noTrade ? base * 1.1 : base;
-  }, [contractValue, length, guaranteed, noTrade]);
 
-  function submitOffer() {
-    if (!offerPlayer) return;
-
-    setPlayers((list) =>
-      list.map((p) => {
-        if (p.id !== offerPlayer.id) return p;
-        // Only update if this bid is higher than existing best
-        if (offerPoints <= p.bestOfferPoints) return p;
-        return {
-          ...p,
-          bestOfferPoints: parseFloat(offerPoints.toFixed(2)),
-          bestOfferTeam: "You",
-        };
-      })
+  if (loading) {
+    return (
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={8} />
+      </div>
     );
-
-    setOfferPlayer(null);
-    setBonus(0);
-    setWage(0);
-    setLength(1);
-    setGuaranteed(50);
-    setNoTrade(false);
   }
 
   return (
-    <div className="p-8 space-y-8 bg-background text-foreground">
-      <h1 className="text-2xl font-bold">Current Free Agents</h1>
+    <div className="p-8 flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Free Agents</h2>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{agents.length} available</Badge>
+          {isHost && (
+            <Button variant="outline" size="sm" onClick={handleClearBids}>
+              <Trash2 className="h-4 w-4 mr-1" /> CLEAR Bids
+            </Button>
+          )}
+        </div>
+      </div>
 
-      <Card className="border-orange-600 bg-orange-50">
-        <CardContent className="text-orange-700 space-y-2">
-          <p className="font-semibold">Free Agency Rules</p>
-          <ul className="list-disc pl-5 text-sm space-y-1">
-            <li>Signing bonuses are paid immediately.</li>
-            <li>Wages recur monthly for duration.</li>
-            <li>Early release incurs penalty on remaining wages.</li>
-            <li>No-trade clause boosts attractiveness (+10%).</li>
-          </ul>
-        </CardContent>
-      </Card>
+      {message && (
+        <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-green-900/30 text-green-300 border border-green-800' : 'bg-red-900/30 text-red-300 border border-red-800'}`}>
+          {message.text}
+        </div>
+      )}
 
-      <Card className="p-0">
-        <CardContent className="p-4">
-          <h2 className="text-lg font-semibold mb-4">Available Players</h2>
-          <ScrollArea className="h-[500px]">
-            <div className="space-y-4">
-              {players.map((p) => (
-                <div
-                  key={p.id}
-                  className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 p-2 rounded hover:bg-muted transition"
-                >
-                  <div className="flex items-center gap-2">
-                    <Avatar>
-                      <AvatarImage src={p.avatar} />
-                      <AvatarFallback>{p.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.position}
-                      </p>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search players..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-10 bg-neutral-800 border-neutral-700"
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-8 text-center text-muted-foreground">
+            {agents.length === 0
+              ? "No free agents available. The host must add players to the pool and confirm it in Host Controls."
+              : "No players match your search."
+            }
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-2">
+          {filtered.map(agent => {
+            const imageSrc = agent.image?.startsWith("http")
+              ? `/api/proxy-image?url=${encodeURIComponent(agent.image)}`
+              : agent.image || Images.NoImage.src;
+            return (
+            <Card key={agent.id} className="bg-neutral-900 border-neutral-800">
+              <CardContent className="p-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
+                    <img
+                      src={imageSrc}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).src = Images.NoImage.src; }}
+                    />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">{agent.full_name || agent.player_name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-xs">{agent.positions}</Badge>
+                      <Badge className={`text-xs ${getRatingColors(agent.rating).background} ${getRatingColors(agent.rating).text}`}>
+                        {agent.rating}
+                      </Badge>
+                      {agent.deadline && (
+                        <span className="flex items-center gap-1">
+                          <Countdown deadline={agent.deadline} />
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="text-sm">
-                    Time Left: <strong>45m</strong>
-                  </div>
-                  <div className="text-sm">
-                    Best Offer:{" "}
-                    <strong>
-                      {p.bestOfferTeam} ({p.bestOfferPoints})
-                    </strong>
-                  </div>
-                  <div className="text-sm">
-                    Your Position:{" "}
-                    <strong
-                      className={
-                        p.bestOfferTeam === "None"
-                          ? ""
-                          : p.bestOfferTeam === "You"
-                          ? "text-green-500"
-                          : "text-red-500"
-                      }
-                    >
-                      {p.bestOfferTeam === "None"
-                        ? "None"
-                        : p.bestOfferTeam === "You"
-                        ? "Winning"
-                        : "Losing"}
-                    </strong>
-                  </div>
-                  <Dialog
-                    open={!!offerPlayer}
-                    onOpenChange={(o) => !o && setOfferPlayer(null)}
-                  >
-                    <DialogTrigger asChild>
-                      <Button onClick={() => setOfferPlayer(p)}>
-                        Make an Offer
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Offer Contract – {p.name}</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="bonus">Signing Bonus</Label>
-                            <Input
-                              id="bonus"
-                              type="number"
-                              value={bonus}
-                              onChange={(e) => setBonus(+e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="wage">Monthly Wage</Label>
-                            <Input
-                              id="wage"
-                              type="number"
-                              value={wage}
-                              onChange={(e) => setWage(+e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div>
-                            <Label>Length (yrs)</Label>
-                            <Select
-                              value={String(length)}
-                              onValueChange={(v) => setLength(+v)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="1" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {[1, 2, 3, 4, 5].map((n) => (
-                                  <SelectItem key={n} value={String(n)}>
-                                    {n}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="guaranteed">% Guaranteed</Label>
-                            <Input
-                              id="guaranteed"
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={guaranteed}
-                              onChange={(e) => setGuaranteed(+e.target.value)}
-                            />
-                          </div>
-                          <div className="flex items-center space-x-2 pt-5">
-                            <Switch
-                              id="noTrade"
-                              checked={noTrade}
-                              onCheckedChange={setNoTrade}
-                            />
-                            <Label htmlFor="noTrade">No-Trade</Label>
-                          </div>
-                        </div>
-                        <Separator />
-                        <div className="text-sm space-y-1">
-                          <p>
-                            Total Value:{" "}
-                            <strong>${contractValue.toLocaleString()}</strong>
-                          </p>
-                          <p>
-                            Offer Points:{" "}
-                            <strong>{offerPoints.toFixed(2)}</strong>
-                          </p>
-                        </div>
-                      </div>
-                      <DialogFooter className="flex justify-end space-x-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setOfferPlayer(null)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button onClick={submitOffer}>Offer</Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
                 </div>
-              ))}
+                <Button
+                  size="sm"
+                  onClick={() => openBidModal(agent)}
+                  disabled={signingId === agent.player_id || !selectedTeam?.id}
+                >
+                  {signingId === agent.player_id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : agent.myBid ? (
+                    <><Gavel className="h-3 w-3 mr-1" /> Edit Bid</>
+                  ) : (
+                    <><UserPlus className="h-3 w-3 mr-1" /> Place Bid</>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          );})}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-0">
+            <button
+              type="button"
+              className="w-full p-4 flex items-center justify-between hover:bg-neutral-800/50 transition-colors"
+              onClick={() => setHistoryOpen(!historyOpen)}
+            >
+              <span className="font-medium flex items-center gap-2">
+                <History className="h-4 w-4" /> FA History
+              </span>
+              {historyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {historyOpen && (
+              <div className="border-t border-neutral-800 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-neutral-800 text-muted-foreground text-left">
+                      <th className="p-3">Player</th>
+                      <th className="p-3">Winner</th>
+                      <th className="p-3">Salary</th>
+                      <th className="p-3">Years</th>
+                      <th className="p-3">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((h, i) => (
+                      <tr key={i} className="border-b border-neutral-800/50">
+                        <td className="p-3">{h.player_name}</td>
+                        <td className="p-3">{h.winner_team} {h.winner_acronym && `(${h.winner_acronym})`}</td>
+                        <td className="p-3">${(h.salary / 1_000_000).toFixed(1)}M</td>
+                        <td className="p-3">{h.years}</td>
+                        <td className="p-3 text-muted-foreground">{new Date(h.resolved_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={!!bidModal} onOpenChange={(open) => !open && setBidModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Place Bid</DialogTitle>
+            <DialogDescription>
+              {bidModal?.full_name || bidModal?.player_name} — Sealed bid. Host resolves when ready.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div>
+              <Label>Annual Salary ($) — $100K increments</Label>
+              <Input
+                type="number"
+                min={0}
+                step={100000}
+                value={bidSalary}
+                onChange={(e) => setBidSalary(e.target.value)}
+                placeholder="5000000"
+              />
             </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+            <div>
+              <Label>Contract Years (max 2)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={2}
+                value={bidYears}
+                onChange={(e) => setBidYears(e.target.value)}
+                placeholder="2"
+              />
+            </div>
+            <div>
+              <Label>Guaranteed % (1-year = 100%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={bidGuaranteedPct}
+                onChange={(e) => setBidGuaranteedPct(e.target.value)}
+                placeholder="100"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="noTradeClause"
+                checked={bidNoTradeClause}
+                onChange={(e) => setBidNoTradeClause(e.target.checked)}
+                className="rounded"
+              />
+              <Label htmlFor="noTradeClause">No-Trade Clause (+4% Points Value)</Label>
+            </div>
+            {pointsPreview != null && (
+              <p className="text-sm text-muted-foreground">
+                Points Value: <span className="font-mono font-medium">{pointsPreview}</span>
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBidModal(null)}>Cancel</Button>
+            <Button
+              onClick={handlePlaceBid}
+              disabled={!bidSalary || parseInt(bidSalary, 10) <= 0 || (parseInt(bidSalary, 10) % 100000 !== 0)}
+            >
+              Place Bid
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

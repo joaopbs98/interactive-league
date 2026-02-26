@@ -1,0 +1,35 @@
+---
+description: "Enforce Supabase client patterns, API standards, and database type checking"
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+
+# Database & Supabase Rules
+
+## Always consult types before DB work
+- Before writing or modifying any code that touches Supabase tables, functions, or enums, **read `lib/database.types.ts`** to confirm column names, types, and relationships.
+- The canonical table list: leagues, teams, player, league_players, contracts, contract_values, finances, injuries, packs, pack_rating_odds, pack_purchases, trades, trade_items, objectives, auctions, bids, matches, draft_picks, sponsors, profiles, users, user_reminders, league_events, player_origins, wage_discounts.
+
+## Supabase client imports (mandatory patterns)
+- **Server-side (API routes, server actions):** `import { createClient } from '@/utils/supabase/server';` then `const supabase = await createClient();`
+- **Client-side (browser components):** `import { createClient } from '@/utils/supabase/client';`
+- **Middleware:** `import { updateSession } from '@/utils/supabase/middleware';`
+
+## Forbidden / deprecated patterns
+- **NEVER** import from `@/lib/supabaseClient` or `lib/supabaseClient.js` (deleted).
+- **NEVER** use `@supabase/auth-helpers-nextjs` (deprecated).
+- **NEVER** use `supabase.auth.getSession()` on the server for auth checks; use `supabase.auth.getUser()` instead.
+
+## API response envelope (per API_STANDARDS.md)
+- Success: `{ success: true, data: { ... } }`
+- Error: `{ success: false, error: "message", details?: "..." }`
+- Always check auth at the top of API routes:
+  ```ts
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  ```
+
+## React & component rules
+- Use function components with hooks only; no class components.
+- Respect existing assets in `lib/assets.ts`; do not introduce alternate styling systems.
+- Use Tailwind CSS for styling; no CSS modules or styled-components.

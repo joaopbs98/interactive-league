@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -8,158 +11,176 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
+import { useLeague } from "@/contexts/LeagueContext";
+import { ChevronDown, HelpCircle } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+
+type CompIndexEntry = {
+  team_id: string;
+  team_name: string;
+  acronym: string;
+  comp_index: number;
+  hof_overall: number;
+  hof_last_3: number;
+  situation: string;
+};
 
 const SituationBadge = ({ status }: { status: string }) => {
-  const statusStyles = {
-    Average: "bg-green-800 text-white",
-    "Be Wary of Late Changes": "bg-yellow-500 text-black",
-    Warning: "bg-red-800 text-white",
+  const statusStyles: Record<string, string> = {
+    "Above average": "bg-green-600 text-white",
+    "Inside average": "bg-green-800 text-white",
+    "Below average": "bg-yellow-500 text-black",
+    Critical: "bg-red-600 text-white",
+    "N/A": "bg-neutral-600",
   };
-
   return (
-    <Badge className={statusStyles[status as keyof typeof statusStyles]}>
+    <Badge className={statusStyles[status] || "bg-neutral-600"}>
       {status}
     </Badge>
   );
 };
 
-const CompIndexPage = () => {
+export default function CompIndexPage() {
+  const { selectedLeagueId, selectedTeam } = useLeague();
+  const [data, setData] = useState<CompIndexEntry[]>([]);
+  const [howOpen, setHowOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedLeagueId) {
+      setData([]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/league/compindex?leagueId=${encodeURIComponent(selectedLeagueId)}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.success && Array.isArray(json.data)) {
+          setData(json.data);
+        } else {
+          setError(json.error || "Failed to load CompIndex");
+          setData([]);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err.message || "Failed to load CompIndex");
+          setData([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLeagueId]);
+
+  if (!selectedLeagueId) {
+    return (
+      <div className="p-8">
+        <h2 className="text-2xl font-bold mb-4">CompIndex Rankings</h2>
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <p className="text-lg font-medium mb-2">Select a league and team to continue</p>
+            <p className="text-sm">Choose a league from the Saves page to view CompIndex rankings.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={6} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <h2 className="text-2xl font-bold mb-4">CompIndex Rankings</h2>
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-8 text-center text-destructive">{error}</CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 flex flex-col gap-8">
-      <h2 className="text-lg font-semibold">CompIndex Rankings</h2>
+      <Breadcrumbs />
+      <h2 className="text-2xl font-bold">CompIndex Rankings</h2>
 
-      <div className="flex gap-2">
-        <SituationBadge status="Be Wary of Late Changes" />
-        <SituationBadge status="Average" />
-        <SituationBadge status="Warning" />
-      </div>
-
-      <Separator />
-
-      <Card>
-        <CardContent className="p-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Club</TableHead>
-                <TableHead>Average</TableHead>
-                <TableHead>Best 14 Average</TableHead>
-                <TableHead>HOF Last 3 Seasons</TableHead>
-                <TableHead>HOF Overall</TableHead>
-                <TableHead>Situation</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[
-                ["AC Milan", "5.75", "1", "7", "7", "Average"],
-                ["AS Roma", "9.25", "2", "12", "12", "Average"],
-                ["Atlético Madrid", "3.90", "6", "5", "3", "Average"],
-                ["Bayern München", "7.10", "11", "9", "9", "Average"],
-                ["Benfica", "11.50", "9", "3", "5", "Average"],
-                ["Go Ahead Eagles", "7.40", "8", "11", "10", "Average"],
-                [
-                  "Inter Miami",
-                  "7.60",
-                  "13",
-                  "6",
-                  "1",
-                  "Be Wary of Late Changes",
-                ],
-                [
-                  "Liverpool",
-                  "7.30",
-                  "14",
-                  "14",
-                  "14",
-                  "Be Wary of Late Changes",
-                ],
-                [
-                  "Manchester Utd.",
-                  "7.80",
-                  "4",
-                  "1",
-                  "6",
-                  "Be Wary of Late Changes",
-                ],
-                ["PSG", "7.20", "3", "10", "8", "Warning"],
-                ["Preußen Münster", "7.50", "10", "4", "4", "Warning"],
-                ["Southampton", "7.70", "5", "8", "11", "Warning"],
-                ["Stoke City", "7.40", "7", "2", "2", "Warning"],
-                ["Willem II", "7.60", "12", "13", "13", "Warning"],
-              ].map(([club, avg, best14, hof3, hofOverall, situation]) => (
-                <TableRow key={club}>
-                  <TableCell>{club}</TableCell>
-                  <TableCell>{avg}</TableCell>
-                  <TableCell>{best14}</TableCell>
-                  <TableCell>{hof3}</TableCell>
-                  <TableCell>{hofOverall}</TableCell>
-                  <TableCell>
-                    <SituationBadge status={situation as string} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
+      <Card className="bg-neutral-900 border-neutral-800">
+        <button
+          type="button"
+          onClick={() => setHowOpen(!howOpen)}
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-neutral-800/50"
+        >
+          <span className="flex items-center gap-2">
+            <HelpCircle className="h-4 w-4" /> How it works
+          </span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${howOpen ? "rotate-180" : ""}`} />
+        </button>
+        {howOpen && (
+          <div className="px-4 pb-4 text-sm text-muted-foreground border-t border-neutral-800 pt-4">
+            <p>CompIndex is based on your top 14 players by rating. Higher ratings = higher CompIndex. Situation badges indicate if you are above average, inside average, below average, or critical compared to league peers.</p>
+          </div>
+        )}
       </Card>
 
-      <Separator />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {[
-          {
-            title: "Best 14 Average",
-            data: [
-              ["AC Milan", "5.75", "Average"],
-              ["AS Roma", "9.25", "Be Wary of Late Changes"],
-              ["Atlético Madrid", "3.90", "Average"],
-              ["Bayern München", "7.10", "Warning"],
-            ],
-          },
-          {
-            title: "HOF Last 3 Seasons",
-            data: [
-              ["AC Milan", "12"],
-              ["AS Roma", "24"],
-              ["Atlético Madrid", "22"],
-              ["Bayern München", "45"],
-            ],
-          },
-          {
-            title: "HOF Overall",
-            data: [
-              ["AC Milan", "12"],
-              ["AS Roma", "24"],
-              ["Atlético Madrid", "22"],
-              ["Bayern München", "45"],
-            ],
-          },
-        ].map((section, idx) => (
-          <Card key={idx}>
-            <CardContent className="p-4">
-              <h4 className="font-semibold mb-4">{section.title}</h4>
-              <Table>
-                <TableBody>
-                  {section.data.map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{row[0]}</TableCell>
-                      <TableCell>{row[1]}</TableCell>
-                      {row[2] && (
-                        <TableCell>
-                          <SituationBadge status={row[2] as string} />
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <Card className="bg-neutral-900 border-neutral-800">
+        <CardContent className="p-0">
+          {data.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <p className="text-lg font-medium mb-2">No CompIndex data yet</p>
+              <p className="text-sm">Complete seasons to build CompIndex and HOF rankings.</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>Club</TableHead>
+                  <TableHead>CompIndex</TableHead>
+                  <TableHead>HOF Last 3</TableHead>
+                  <TableHead>HOF Overall</TableHead>
+                  <TableHead>Situation</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.map((entry, idx) => (
+                  <TableRow
+                    key={entry.team_id}
+                    className={selectedTeam?.id === entry.team_id ? "bg-blue-900/20" : ""}
+                  >
+                    <TableCell>{idx + 1}</TableCell>
+                    <TableCell>
+                      <span className="font-medium">{entry.team_name}</span>
+                      <span className="text-muted-foreground text-sm ml-1">({entry.acronym})</span>
+                    </TableCell>
+                    <TableCell>{entry.comp_index.toFixed(2)}</TableCell>
+                    <TableCell>{entry.hof_last_3}</TableCell>
+                    <TableCell>{entry.hof_overall}</TableCell>
+                    <TableCell>
+                      <SituationBadge status={entry.situation} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
-};
-
-export default CompIndexPage;
+}
