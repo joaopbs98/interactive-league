@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -54,10 +55,12 @@ function StandingsTable({
   rows,
   formData,
   selectedTeamId,
+  leagueId,
 }: {
   rows: Standing[];
   formData: FormData | null;
   selectedTeamId?: string;
+  leagueId?: string | null;
 }) {
   const getH2hVs = (teamId: string, opponentId: string) => {
     if (!formData?.h2h) return null;
@@ -121,7 +124,16 @@ function StandingsTable({
               {s.team?.logo_url && (
                 <img src={s.team.logo_url} alt="" className="w-6 h-6 rounded" />
               )}
-              <span className="font-medium">{s.team?.name || "Unknown"}</span>
+              {leagueId && s.team_id ? (
+                <Link
+                  href={`/main/dashboard/team/${s.team_id}/squad?league=${leagueId}`}
+                  className="font-medium hover:text-primary hover:underline"
+                >
+                  {s.team?.name || "Unknown"}
+                </Link>
+              ) : (
+                <span className="font-medium">{s.team?.name || "Unknown"}</span>
+              )}
               <span className="text-muted-foreground text-xs">({s.team?.acronym})</span>
             </td>
             {formData && (
@@ -278,6 +290,7 @@ export default function StandingsPage() {
               rows={domesticRows}
               formData={formData}
               selectedTeamId={selectedTeam?.id}
+              leagueId={selectedLeagueId}
             />
           </CardContent>
         </Card>
@@ -300,7 +313,7 @@ export default function StandingsPage() {
             {groups.map((groupName) => (
               <div key={groupName}>
                 <h4 className="text-sm font-semibold text-muted-foreground mb-2">Group {groupName}</h4>
-                <StandingsTable rows={byGroup[groupName]} formData={formData} selectedTeamId={selectedTeam?.id} />
+                <StandingsTable rows={byGroup[groupName]} formData={formData} selectedTeamId={selectedTeam?.id} leagueId={selectedLeagueId} />
               </div>
             ))}
           </div>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -180,10 +182,15 @@ export default function TeamComparisonPage() {
               </CardContent>
             </Card>
             <Card className="bg-neutral-900 border-neutral-800 border-l-4 border-l-amber-500">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-lg">
                   {opponents.find((t) => t.id === opponentId)?.name ?? "Opponent"}
                 </CardTitle>
+                <Link href={`/main/dashboard/team/${opponentId}/squad?league=${selectedLeagueId}`}>
+                  <Button variant="outline" size="sm" className="shrink-0">
+                    View squad
+                  </Button>
+                </Link>
               </CardHeader>
               <CardContent className="space-y-2">
                 <div className="flex justify-between text-sm">
@@ -198,6 +205,14 @@ export default function TeamComparisonPage() {
                   <span className="text-muted-foreground">Squad size</span>
                   <span className="font-bold">{theirSquad.length}</span>
                 </div>
+                <Link
+                  href={`/main/dashboard/team/${opponentId}/squad?league=${selectedLeagueId}`}
+                  className="block pt-2"
+                >
+                  <Button variant="secondary" size="sm" className="w-full">
+                    View full roster
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           </div>
@@ -226,6 +241,12 @@ export default function TeamComparisonPage() {
                   <p className="text-sm font-medium text-muted-foreground mb-2">
                     {opponents.find((t) => t.id === opponentId)?.name ?? "Opponent"}
                   </p>
+                  <Link
+                    href={`/main/dashboard/team/${opponentId}/squad?league=${selectedLeagueId}`}
+                    className="text-xs text-primary hover:underline mb-2 inline-block"
+                  >
+                    View full roster
+                  </Link>
                   <div className="space-y-1">
                     {theirTop14.map((p, i) => (
                       <div key={p.id} className="flex justify-between text-sm">

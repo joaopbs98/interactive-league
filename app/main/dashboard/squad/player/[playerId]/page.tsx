@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,12 +85,6 @@ export default function SquadPlayerPage() {
   const [listLookingFor, setListLookingFor] = useState("");
   const [listAcceptsTrades, setListAcceptsTrades] = useState(false);
   const [listModalOpen, setListModalOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [editStats, setEditStats] = useState<Record<string, number>>({});
-  const [editRating, setEditRating] = useState("");
-  const [editPositions, setEditPositions] = useState("");
-  const [editPotential, setEditPotential] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
 
   const isHost = selectedTeam?.leagues?.is_host ?? (selectedTeam?.leagues?.commissioner_user_id === selectedTeam?.user_id);
 
@@ -111,18 +106,6 @@ export default function SquadPlayerPage() {
       if (!res.ok) throw new Error(data.error || "Failed to fetch");
       const p = data.player;
       setPlayer(p);
-      const lp = p?.leaguePlayer as Record<string, unknown> | undefined;
-      const stats: Record<string, number> = {};
-      for (const keys of Object.values(statCategories)) {
-        for (const key of keys) {
-          const v = lp?.[key] ?? p?.[key];
-          stats[key] = typeof v === "number" && !isNaN(v) ? v : 50;
-        }
-      }
-      setEditStats(stats);
-      setEditRating(String(lp?.rating ?? p?.overall_rating ?? 70));
-      setEditPositions(p?.positions ?? "");
-      setEditPotential(lp?.potential != null ? String(lp.potential) : "");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -255,38 +238,9 @@ export default function SquadPlayerPage() {
     return typeof v === "number" && !isNaN(v) ? v : 0;
   };
 
-  const handleSaveEdit = async () => {
-    if (!player.leaguePlayerId || !player.leagueId || !leagueId) return;
-    const ratingNum = parseInt(editRating, 10);
-    if (isNaN(ratingNum) || ratingNum < 40 || ratingNum > 99) {
-      toast.error("Rating must be 40-99");
-      return;
-    }
-    setEditSaving(true);
-    try {
-      const res = await fetch("/api/league/host/edit-player", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leagueId: player.leagueId ?? leagueId,
-          leaguePlayerId: player.leaguePlayerId,
-          rating: ratingNum,
-          positions: editPositions.trim() || undefined,
-          potential: editPotential.trim() ? parseInt(editPotential, 10) : null,
-          stats: editMode ? editStats : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save");
-      toast.success("Player updated");
-      setEditMode(false);
-      fetchPlayer();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setEditSaving(false);
-    }
-  };
+  const editPlayerUrl = teamId && leagueId && player.leaguePlayerId
+    ? `/main/dashboard/add-player?edit=${player.leaguePlayerId}&teamId=${teamId}&league=${leagueId}`
+    : null;
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -318,21 +272,9 @@ export default function SquadPlayerPage() {
                   {player.full_name || player.name}
                 </h1>
                 <div className="flex flex-wrap gap-2 items-center mt-1">
-                  {editMode ? (
-                    <div className="flex flex-col gap-1">
-                      <Label className="text-xs text-muted-foreground">Positions</Label>
-                      <Input
-                        value={editPositions}
-                        onChange={(e) => setEditPositions(e.target.value)}
-                        placeholder="e.g. CM, ST"
-                        className="w-32"
-                      />
-                    </div>
-                  ) : (
-                    <Badge variant="secondary" className="font-medium">
-                      {player.positions}
-                    </Badge>
-                  )}
+                  <Badge variant="secondary" className="font-medium">
+                    {player.positions}
+                  </Badge>
                   {player.age != null && (
                     <span className="text-sm text-muted-foreground">
                       {player.age} y.o.
@@ -360,41 +302,14 @@ export default function SquadPlayerPage() {
                     <div className="text-xs text-muted-foreground mb-0.5">
                       Overall rating
                     </div>
-                    {editMode ? (
-                      <Input
-                        type="number"
-                        min={40}
-                        max={99}
-                        value={editRating}
-                        onChange={(e) => setEditRating(e.target.value)}
-                        className={`w-14 h-14 text-center text-xl font-bold ${getStatColor(Number(editRating) || 0)}`}
-                      />
-                    ) : (
-                      <div
-                        className={`inline-flex items-center justify-center w-14 h-14 rounded-lg text-xl font-bold ${getStatColor(
-                          Number(overall)
-                        )}`}
-                      >
-                        {overall}
-                      </div>
-                    )}
-                  </div>
-                  {editMode && (
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-0.5">
-                        Potential
-                      </div>
-                      <Input
-                        type="number"
-                        min={40}
-                        max={99}
-                        value={editPotential}
-                        onChange={(e) => setEditPotential(e.target.value)}
-                        placeholder="Optional"
-                        className={`w-14 h-10 text-center font-medium ${editPotential ? getStatColor(parseInt(editPotential, 10) || 0) : ""}`}
-                      />
+                    <div
+                      className={`inline-flex items-center justify-center w-14 h-14 rounded-lg text-xl font-bold ${getStatColor(
+                        Number(overall)
+                      )}`}
+                    >
+                      {overall}
                     </div>
-                  )}
+                  </div>
                   {displayValue && (
                     <div>
                       <div className="text-xs text-muted-foreground mb-0.5">
@@ -427,23 +342,12 @@ export default function SquadPlayerPage() {
             <CardTitle className="text-base">Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {isHost && player.leaguePlayerId && (
-              <>
-                {!editMode ? (
-                  <Button variant="outline" className="w-full" onClick={() => setEditMode(true)}>
-                    Edit Player
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button className="w-full" onClick={handleSaveEdit} disabled={editSaving}>
-                      {editSaving ? "Saving..." : "Save"}
-                    </Button>
-                    <Button variant="outline" onClick={() => setEditMode(false)}>
-                      Cancel
-                    </Button>
-                  </div>
-                )}
-              </>
+            {isHost && player.leaguePlayerId && editPlayerUrl && (
+              <Link href={editPlayerUrl}>
+                <Button variant="outline" className="w-full">
+                  Edit Player
+                </Button>
+              </Link>
             )}
             <Button
               variant={player.isOnTransferList ? "secondary" : "outline"}
@@ -650,9 +554,8 @@ export default function SquadPlayerPage() {
               <CardContent className="p-6">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                   {keys.map((stat) => {
-                    const val = editMode ? (editStats[stat] ?? getStatValue(stat)) : getStatValue(stat);
-                    const numVal = Number(val);
-                    const safeVal = isNaN(numVal) ? 0 : Math.min(99, Math.max(1, numVal));
+                    const val = getStatValue(stat);
+                    const safeVal = isNaN(Number(val)) ? 0 : Math.min(99, Math.max(1, Number(val)));
                     return (
                       <div
                         key={stat}
@@ -661,25 +564,11 @@ export default function SquadPlayerPage() {
                         <span className="text-sm text-muted-foreground">
                           {formatStatName(stat)}
                         </span>
-                        {editMode ? (
-                          <Input
-                            type="number"
-                            min={1}
-                            max={99}
-                            value={editStats[stat] ?? safeVal}
-                            onChange={(e) => {
-                              const v = parseInt(e.target.value, 10);
-                              setEditStats((prev) => ({ ...prev, [stat]: isNaN(v) ? 1 : Math.min(99, Math.max(1, v)) }));
-                            }}
-                            className={`w-16 h-8 text-center text-sm font-medium ${getStatColor(editStats[stat] ?? safeVal)}`}
-                          />
-                        ) : (
-                          <Badge
-                            className={`min-w-[2.5rem] justify-center ${getStatColor(safeVal)}`}
-                          >
-                            {safeVal}
-                          </Badge>
-                        )}
+                        <Badge
+                          className={`min-w-[2.5rem] justify-center ${getStatColor(safeVal)}`}
+                        >
+                          {safeVal}
+                        </Badge>
                       </div>
                     );
                   })}

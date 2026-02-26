@@ -121,6 +121,9 @@ export async function POST(request: NextRequest) {
         bodyType,
         potential,
         stats: customStats,
+        is_youngster,
+        is_veteran,
+        base_rating,
       } = customPlayer;
       if (!name || !positions || rating == null || wage == null) {
         return NextResponse.json(
@@ -190,6 +193,17 @@ export async function POST(request: NextRequest) {
       };
       if (potential != null && typeof potential === "number" && potential >= 40 && potential <= 99) {
         lpInsert.potential = potential;
+      }
+      if (typeof is_youngster === "boolean") {
+        lpInsert.is_youngster = is_youngster;
+      }
+      if (typeof is_veteran === "boolean") {
+        lpInsert.is_veteran = is_veteran;
+      }
+      if (is_youngster && base_rating != null && typeof base_rating === "number") {
+        lpInsert.base_rating = base_rating;
+      } else if (is_youngster) {
+        lpInsert.base_rating = r;
       }
       if (customStats && typeof customStats === "object") {
         for (const key of statColumns) {

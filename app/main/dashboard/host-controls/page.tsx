@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { useLeague } from "@/contexts/LeagueContext";
 import {
   Calendar, Users, Trophy, Settings, Play, StopCircle, Gavel,
-  AlertTriangle, ScrollText, Loader2, Shield, Zap, DollarSign, UserPlus, BarChart3, UserPlus2, Trash2, BookOpen
+  AlertTriangle, ScrollText, Loader2, Shield, Zap, DollarSign, UserPlus, BarChart3, UserPlus2, Trash2, BookOpen, TrendingUp
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -1601,6 +1601,22 @@ export default function HostControlsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Youngster Upgrades */}
+      <Card className="bg-neutral-900 border-neutral-800">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Youngster Upgrades</CardTitle>
+          <CardDescription>Enter games played and average ratings for youngsters. Apply upgrades before end of season.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href={`/main/dashboard/youngster-upgrades${selectedLeagueId ? `?league=${selectedLeagueId}` : ''}`}>
+            <Button variant="outline" className="w-full">
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Youngster Upgrades
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* Add Player to Team */}
       <Card className="bg-neutral-900 border-neutral-800">

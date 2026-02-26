@@ -49,3 +49,13 @@ export function getRatingColorClasses(rating: number): string {
   const colors = getRatingColors(rating);
   return `${colors.background} ${colors.text} ${colors.border || ''}`;
 }
+
+// For Input elements: includes dark: variants so rating colors override Input's dark:bg-input/30
+export function getRatingColorClassesForInput(rating: number): string {
+  const colors = getRatingColors(rating);
+  const bg = colors.background; // e.g. "bg-yellow-400"
+  const text = colors.text;     // e.g. "text-black"
+  const darkBg = bg.replace(/^bg-/, "dark:bg-");
+  const darkText = text.replace(/^text-/, "dark:text-");
+  return `${colors.background} ${colors.text} ${darkBg} ${darkText} ${colors.border || ''}`;
+}

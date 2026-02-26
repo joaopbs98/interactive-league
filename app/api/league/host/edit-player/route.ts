@@ -19,7 +19,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { leagueId, leaguePlayerId, rating, positions, potential, is_youngster, stats } = body;
+    const { leagueId, leaguePlayerId, rating, positions, potential, is_youngster, is_veteran, internationalReputation, stats } = body;
 
     if (!leagueId || !leaguePlayerId) {
       return NextResponse.json({ error: "leagueId and leaguePlayerId required" }, { status: 400 });
@@ -42,6 +42,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
+    // Update international_reputation on player table when provided
+    if (typeof internationalReputation === "number" && internationalReputation >= 1 && internationalReputation <= 5 && existing.player_id) {
+      await serviceSupabase
+        .from("player")
+        .update({ international_reputation: String(internationalReputation) })
+        .eq("player_id", existing.player_id);
+    }
+
     const statColumns = ["acceleration", "sprint_speed", "agility", "reactions", "balance", "shot_power", "jumping", "stamina", "strength", "long_shots", "aggression", "interceptions", "positioning", "vision", "penalties", "composure", "crossing", "finishing", "heading_accuracy", "short_passing", "volleys", "dribbling", "curve", "fk_accuracy", "long_passing", "ball_control", "defensive_awareness", "standing_tackle", "sliding_tackle", "gk_diving", "gk_handling", "gk_kicking", "gk_positioning", "gk_reflexes"] as const;
 
     const updates: Record<string, unknown> = {};
@@ -58,6 +66,12 @@ export async function PATCH(request: NextRequest) {
     }
     if (typeof is_youngster === "boolean") {
       updates.is_youngster = is_youngster;
+      if (is_youngster && (potential === null || potential === "" || typeof potential !== "number" || potential < 40 || potential > 99)) {
+        return NextResponse.json({ error: "Potential (40-99) is required when designating as youngster" }, { status: 400 });
+      }
+    }
+    if (typeof is_veteran === "boolean") {
+      updates.is_veteran = is_veteran;
     }
     if (stats && typeof stats === "object") {
       for (const key of statColumns) {

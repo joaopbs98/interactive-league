@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       (teams || []).map(async (team) => {
         const { data: players, error: playersError } = await serviceSupabase
           .from("league_players")
-          .select("id, player_id, player_name, full_name, positions, rating, image, potential, is_youngster")
+          .select("id, player_id, player_name, full_name, positions, rating, image, potential, is_youngster, is_veteran")
           .eq("team_id", team.id)
           .order("rating", { ascending: false });
 
@@ -57,9 +57,15 @@ export async function GET(request: NextRequest) {
           return { ...team, squad: [], error: playersError.message };
         }
 
-        const startingIds = (team.starting_lineup as string[] || []).filter(Boolean);
-        const benchIds = (team.bench as string[] || []).filter(Boolean);
-        const reservesIds = (team.reserves as string[] || []).filter(Boolean);
+        const toPlayerIds = (arr: unknown): string[] => {
+          if (!Array.isArray(arr)) return [];
+          return arr.map((item) =>
+            typeof item === "string" ? item : (item as { player_id?: string })?.player_id
+          ).filter(Boolean) as string[];
+        };
+        const startingIds = toPlayerIds(team.starting_lineup);
+        const benchIds = toPlayerIds(team.bench);
+        const reservesIds = toPlayerIds(team.reserves);
 
         const squad = (players || []).map((p) => ({
           ...p,

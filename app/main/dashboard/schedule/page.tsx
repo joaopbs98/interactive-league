@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Toaster, toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -423,9 +424,16 @@ export default function SchedulePage() {
                             {compLabel}
                           </Badge>
                         )}
-                        <span className="font-medium text-right">
-                          {match.home_team?.name || "TBD"}
-                        </span>
+                        {match.home_team?.id && selectedLeagueId ? (
+                          <Link
+                            href={`/main/dashboard/team/${match.home_team.id}/squad?league=${selectedLeagueId}`}
+                            className="font-medium text-right hover:text-primary hover:underline"
+                          >
+                            {match.home_team.name || "TBD"}
+                          </Link>
+                        ) : (
+                          <span className="font-medium text-right">{match.home_team?.name || "TBD"}</span>
+                        )}
                         {match.home_team?.logo_url && (
                           <img
                             src={match.home_team.logo_url}
@@ -481,9 +489,16 @@ export default function SchedulePage() {
                             className="w-8 h-8 rounded"
                           />
                         )}
-                        <span className="font-medium">
-                          {match.away_team?.name || "TBD"}
-                        </span>
+                        {match.away_team?.id && selectedLeagueId ? (
+                          <Link
+                            href={`/main/dashboard/team/${match.away_team.id}/squad?league=${selectedLeagueId}`}
+                            className="font-medium hover:text-primary hover:underline"
+                          >
+                            {match.away_team.name || "TBD"}
+                          </Link>
+                        ) : (
+                          <span className="font-medium">{match.away_team?.name || "TBD"}</span>
+                        )}
                       </div>
                     </div>
                   </CardContent>

@@ -6,13 +6,11 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { useLeague } from "@/contexts/LeagueContext";
 import TeamFormationDisplay from "@/components/TeamFormationDisplay";
 import { formationPositions } from "@/lib/formationPositions";
 import {
   Shield,
-  Loader2,
   ArrowLeft,
   Copy,
   Check,
@@ -32,6 +30,7 @@ type SquadPlayer = {
   role?: string;
   potential?: number | null;
   is_youngster?: boolean;
+  is_veteran?: boolean;
 };
 
 type TeamData = {
@@ -52,12 +51,6 @@ export default function EafcSetupTeamPage() {
   const [team, setTeam] = useState<TeamData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [editingPlayer, setEditingPlayer] = useState<SquadPlayer | null>(null);
-  const [editRating, setEditRating] = useState("");
-  const [editPositions, setEditPositions] = useState("");
-  const [editPotential, setEditPotential] = useState("");
-  const [editIsYoungster, setEditIsYoungster] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const leagueId = selectedLeagueId;
   const isHost = selectedTeam?.leagues?.is_host ?? (selectedTeam?.leagues?.commissioner_user_id === selectedTeam?.user_id);
@@ -94,47 +87,6 @@ export default function EafcSetupTeamPage() {
       navigator.clipboard.writeText(team.eafc_tactic_code);
       setCopiedCode(true);
       setTimeout(() => setCopiedCode(false), 2000);
-    }
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingPlayer || !leagueId) return;
-    const ratingNum = parseInt(editRating, 10);
-    if (isNaN(ratingNum) || ratingNum < 40 || ratingNum > 99) {
-      alert("Rating must be 40-99");
-      return;
-    }
-    const potentialNum = editPotential.trim() ? parseInt(editPotential, 10) : null;
-    if (editPotential.trim() && (isNaN(potentialNum!) || potentialNum! < 40 || potentialNum! > 99)) {
-      alert("Potential must be 40-99 or empty");
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/league/host/edit-player", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leagueId,
-          leaguePlayerId: editingPlayer.id,
-          rating: ratingNum,
-          positions: editPositions.trim() || undefined,
-          potential: potentialNum,
-          is_youngster: editIsYoungster,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setEditingPlayer(null);
-        await fetchTeam();
-      } else {
-        alert(data.error || "Failed to save");
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save");
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -181,8 +133,20 @@ export default function EafcSetupTeamPage() {
 
   const formation = team.formation || "3-1-4-2";
   const positions = formationPositions[formation] || formationPositions["3-1-4-2"];
-  const startingIds = ((team as { starting_lineup?: string[] }).starting_lineup || []).filter(Boolean);
+  const rawLineup = (team as { starting_lineup?: unknown[] }).starting_lineup || [];
+  let startingIds = rawLineup.map((item) =>
+    typeof item === "string" ? item : (item as { player_id?: string })?.player_id
+  ).filter(Boolean) as string[];
+
+  // Fallback: when starting_lineup is empty or incomplete, fill with top squad players by rating
   const squadMap = new Map(team.squad.map((p) => [p.player_id, p]));
+  const usedIds = new Set(startingIds);
+  const topSquadByRating = [...team.squad].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  const fillIds = topSquadByRating
+    .filter((p) => !usedIds.has(p.player_id))
+    .map((p) => p.player_id)
+    .slice(0, Math.max(0, 11 - startingIds.length));
+  startingIds = [...startingIds, ...fillIds].slice(0, 11);
 
   const formationPlayers = positions.slice(0, 11).map((_, idx) => {
     const pid = startingIds[idx];
@@ -205,7 +169,7 @@ export default function EafcSetupTeamPage() {
           <Gamepad2 className="h-7 w-7" /> {team.name}
         </h1>
         <div className="flex gap-2">
-          <Link href={`/main/dashboard/host-controls?addPlayer=${teamId}`}>
+          <Link href={`/main/dashboard/add-player?league=${leagueId}&teamId=${teamId}`}>
             <Button variant="outline" size="sm">
               Add Player to Team
             </Button>
@@ -288,62 +252,11 @@ export default function EafcSetupTeamPage() {
                 {p.potential != null && (
                   <span className="text-xs text-muted-foreground">Pot: {p.potential}</span>
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditingPlayer(p);
-                    setEditRating(String(p.rating));
-                    setEditPositions(p.positions || "");
-                    setEditPotential(p.potential != null ? String(p.potential) : "");
-                    setEditIsYoungster(p.is_youngster ?? false);
-                  }}
-                >
-                  Edit
-                </Button>
-                {editingPlayer?.id === p.id && (
-                  <div className="flex flex-wrap items-center gap-2 ml-2">
-                    <Input
-                      type="number"
-                      min={40}
-                      max={99}
-                      value={editRating}
-                      onChange={(e) => setEditRating(e.target.value)}
-                      placeholder="Rating"
-                      className="w-16 h-8"
-                    />
-                    <Input
-                      value={editPositions}
-                      onChange={(e) => setEditPositions(e.target.value)}
-                      placeholder="Positions"
-                      className="w-24 h-8"
-                    />
-                    <Input
-                      type="number"
-                      min={40}
-                      max={99}
-                      value={editPotential}
-                      onChange={(e) => setEditPotential(e.target.value)}
-                      placeholder="Potential"
-                      className="w-20 h-8"
-                    />
-                    <label className="flex items-center gap-1 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editIsYoungster}
-                        onChange={(e) => setEditIsYoungster(e.target.checked)}
-                        className="rounded"
-                      />
-                      Wonderkid
-                    </label>
-                    <Button size="sm" onClick={handleSaveEdit} disabled={saving}>
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingPlayer(null)}>
-                      Cancel
-                    </Button>
-                  </div>
-                )}
+                <Link href={`/main/dashboard/add-player?league=${leagueId}&teamId=${teamId}&edit=${p.id}`}>
+                  <Button variant="ghost" size="sm">
+                    Edit
+                  </Button>
+                </Link>
               </div>
             ))}
           </div>

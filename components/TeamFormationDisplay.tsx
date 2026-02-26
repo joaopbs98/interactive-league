@@ -69,7 +69,7 @@ const TeamFormationDisplay: React.FC<TeamFormationDisplayProps> = ({
   className = ""
 }) => {
   return (
-    <div className={`relative w-full aspect-[4/3] rounded-lg overflow-hidden ${className}`}>
+    <div className={`relative w-full aspect-[4/3] rounded-lg overflow-hidden py-8 px-6 ${className}`}>
       <Image
         src={Images.Field}
         fill
