@@ -226,23 +226,23 @@ export async function POST(request: NextRequest) {
       let lpData: Record<string, unknown> | null = null;
 
       if (leaguePlayerId) {
-        const { data } = await serviceSupabase
+        const { data, error } = await serviceSupabase
           .from("league_players")
           .select(selectCols)
           .eq("id", leaguePlayerId)
           .eq("league_id", leagueId)
           .single();
-        lpData = data;
+        if (!error && data) lpData = data as unknown as Record<string, unknown>;
       }
       if (!lpData && playerId) {
-        const { data } = await serviceSupabase
+        const { data, error } = await serviceSupabase
           .from("league_players")
           .select(selectCols)
           .eq("league_id", leagueId)
           .eq("player_id", playerId)
           .not("team_id", "is", null)
           .single();
-        lpData = data;
+        if (!error && data) lpData = data as unknown as Record<string, unknown>;
       }
 
       if (!lpData) {
@@ -250,12 +250,15 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      const lpPlayerId = String(lpData.player_id ?? "");
+
       let games = Number(gamesPlayed) || 0;
       let avg = Number(adjAvg) || 0;
 
       if (performance && typeof performance === "object") {
-        const perfGames = computeTotalGamesFromPerformance(performance);
-        const perfAvg = computeAdjAvgFromPerformance(performance);
+        const perf = performance as Record<string, number | null | undefined>;
+        const perfGames = computeTotalGamesFromPerformance(perf);
+        const perfAvg = computeAdjAvgFromPerformance(perf);
         if (perfGames > 0) games = perfGames;
         if (perfAvg !== null) avg = perfAvg;
 
@@ -288,8 +291,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const rating = lpData.base_rating ?? lpData.rating ?? 60;
-      const delta = getYoungsterUpgrade(rating, games, avg);
+      const rating = Number(lpData.base_rating ?? lpData.rating ?? 60) || 60;
+      const delta = getYoungsterUpgrade(rating, games, Number(avg) || 0);
       const newRating = Math.min(99, Math.max(40, rating + delta));
 
       const currentAttrs: Record<string, number | null> = {};
@@ -301,16 +304,16 @@ export async function POST(request: NextRequest) {
       const attributeUpdates = computeYoungsterAttributes({
         baseOVR: rating,
         newOVR: newRating,
-        positions: lpData.positions || "CM",
+        positions: String(lpData.positions ?? "CM"),
         currentAttributes: currentAttrs,
         indTrainingAttrs: (lpData.youngster_ind_training_attrs as string[]) || [],
         nonWeightedAttrs: (lpData.youngster_non_weighted_attrs as string[]) || [],
-        potential: lpData.potential,
+        potential: lpData.potential as number | null | undefined,
       });
 
       const { data: rpcData, error } = await serviceSupabase.rpc("apply_youngster_rating_delta", {
         p_league_id: leagueId,
-        p_player_id: lpData.player_id,
+        p_player_id: lpPlayerId,
         p_delta: delta,
         p_games_played: games,
         p_adj_avg: avg,
@@ -319,13 +322,13 @@ export async function POST(request: NextRequest) {
       });
 
       if (error) {
-        results.push({ playerId: lpData.player_id, delta: 0, newRating: rating, error: error.message });
+        results.push({ playerId: lpPlayerId, delta: 0, newRating: rating, error: error.message });
         continue;
       }
 
       const r = rpcData as { success: boolean; new_rating?: number };
       results.push({
-        playerId: lpData.player_id,
+        playerId: lpPlayerId,
         delta,
         newRating: r.new_rating ?? newRating,
       });

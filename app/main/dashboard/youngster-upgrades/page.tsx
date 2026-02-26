@@ -293,7 +293,7 @@ export default function YoungsterUpgradesPage() {
                               type="number"
                               min={0}
                               className="w-16 h-8 text-center"
-                              value={edits[row.leaguePlayerId]?.games ?? row.totalGames || ""}
+                              value={(edits[row.leaguePlayerId]?.games ?? row.totalGames) || ""}
                               onChange={(e) => updateEdit(row.leaguePlayerId, "games", parseInt(e.target.value, 10))}
                               placeholder="0"
                             />
