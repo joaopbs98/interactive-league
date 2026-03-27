@@ -23,13 +23,17 @@ import {
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Toaster, toast } from "sonner";
+import { useLeague } from "@/contexts/LeagueContext";
+import { EmptyState } from "@/components/EmptyState";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { Shuffle } from "lucide-react";
 
 interface Team {
-  id: number;
+  id: string | number;
   name: string;
 }
 interface Player {
-  id: number;
+  id: string | number;
   name: string;
   position: string;
   image: string;
@@ -43,7 +47,8 @@ type TradeItem =
   | { item_type: "player"; player: Player }
   | { item_type: "money"; amount: number }
   | { item_type: "objective"; objective: Objective }
-  | { item_type: "request"; player: Player };
+  | { item_type: "request"; player: Player }
+  | { item_type: "draft_pick"; draft_pick: { id: string; pick_number: number; season: number } };
 
 interface Trade {
   id: number;
@@ -54,66 +59,114 @@ interface Trade {
 }
 
 // current user’s club
-const currentTeam: Team = { id: 1, name: "Southampton" };
-// all clubs
-const allTeams: Team[] = [
-  currentTeam,
-  { id: 2, name: "Benfica" },
-  { id: 3, name: "AC Milan" },
-  { id: 4, name: "AS Roma" },
-];
-
-// your squad
-const mySquad: Player[] = [
-  { id: 11, name: "Player A", position: "ST", image: "/players/pA.png" },
-  { id: 22, name: "Player B", position: "CM", image: "/players/pB.png" },
-  { id: 33, name: "Player C", position: "CB", image: "/players/pC.png" },
-];
-// objectives
-const objectives: Objective[] = [
-  { id: 101, label: "CL Qualification" },
-  { id: 102, label: "Score 20 Goals" },
-];
-// mock squads per team
-const teamSquads: Record<number, Player[]> = {
-  2: [
-    { id: 201, name: "Benfica GK", position: "GK", image: "/players/b-gk.png" },
-    { id: 202, name: "Benfica CB", position: "CB", image: "/players/b-cb.png" },
-    { id: 203, name: "Benfica ST", position: "ST", image: "/players/b-st.png" },
-  ],
-  3: [
-    { id: 301, name: "Milan CM", position: "CM", image: "/players/m-cm.png" },
-  ],
-  4: [{ id: 401, name: "Roma RB", position: "RB", image: "/players/r-rb.png" }],
-};
-
 export default function TradeCenterPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [userTeam, setUserTeam] = useState<Team | null>(null);
 
-  // Initialize with a sample outgoing trade
+  const { selectedLeagueId, selectedTeam } = useLeague();
+  const [leagueTeams, setLeagueTeams] = useState<Team[]>([]);
+  const [mySquad, setMySquad] = useState<Player[]>([]);
+  const [draftPicks, setDraftPicks] = useState<{ id: string; pick_number: number; season: number }[]>([]);
+
+  // Fetch user's team, trades, league teams, squad, draft picks
   useEffect(() => {
-    setTrades([
-      {
-        id: 14,
-        fromTeam: currentTeam,
-        toTeam: allTeams[1],
-        status: "pending",
-        items: [
-          { item_type: "player", player: mySquad[0] },
-          { item_type: "money", amount: 5_000_000 },
-        ],
-      },
-    ]);
-  }, []);
+    const fetchData = async () => {
+      const team = selectedTeam ? { id: selectedTeam.id, name: selectedTeam.name } : null;
+      setUserTeam(team);
+      if (!team) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const tradesRes = await fetch(`/api/trades?teamId=${team.id}`);
+        if (tradesRes.ok) {
+          const tradesData = await tradesRes.json();
+          const raw = tradesData.trades || [];
+          setTrades(raw.map((t: any) => ({
+            id: t.id,
+            fromTeam: t.from_team || { id: t.from_team_id, name: "—" },
+            toTeam: t.to_team || { id: t.to_team_id, name: "—" },
+            status: t.status,
+            items: (t.trade_items || []).map((i: any) => {
+              if (i.item_type === "player" && i.player_id) {
+                return { item_type: "player" as const, player: { id: i.player_id, name: String(i.player_id), position: "", image: "" } };
+              }
+              if (i.item_type === "request" && i.player_id) {
+                return { item_type: "request" as const, player: { id: i.player_id, name: String(i.player_id), position: "", image: "" } };
+              }
+              if (i.item_type === "money") return { item_type: "money" as const, amount: i.amount ?? 0 };
+              if (i.item_type === "objective") return { item_type: "objective" as const, objective: { id: i.objective_id, label: "Objective" } };
+              if (i.item_type === "draft_pick" && i.draft_pick) {
+                return { item_type: "draft_pick" as const, draft_pick: { id: i.draft_pick.id, pick_number: i.draft_pick.pick_number, season: i.draft_pick.season } };
+              }
+              return { item_type: "player" as const, player: { id: "", name: "?", position: "", image: "" } };
+            }),
+          })));
+        }
+        if (selectedLeagueId) {
+          const [teamsRes, draftRes, squadRes] = await Promise.all([
+            fetch(`/api/league/teams?leagueId=${selectedLeagueId}`),
+            fetch(`/api/draft?leagueId=${selectedLeagueId}`),
+            fetch(`/api/team/${team.id}`).catch(() => ({ ok: false })),
+          ]);
+          if (teamsRes.ok) {
+            const teamsData = await teamsRes.json();
+            const list = (teamsData.data || teamsData.teams || []) as { id: string; name: string }[];
+            setLeagueTeams(list.map((t) => ({ id: t.id, name: t.name })));
+          }
+          if (draftRes.ok) {
+            const draftData = await draftRes.json();
+            const picks = (draftData.data?.picks || []) as { id: string; pick_number: number; season: number; is_used: boolean; current_owner_team_id?: string; team_id?: string }[];
+            const myId = draftData.data?.userTeamId ?? team.id;
+            setDraftPicks(picks.filter((p) => (p.current_owner_team_id ?? p.team_id) === myId && !p.is_used).map((p) => ({ id: p.id, pick_number: p.pick_number, season: p.season })));
+          }
+          if (squadRes.ok) {
+            const squadData = await (squadRes as Response).json();
+            const players = (squadData.team?.squad || squadData.squad || squadData.players || []) as { player_id: string; name?: string; full_name?: string; positions?: string[] }[];
+            setMySquad(players.map((p: any) => ({ id: p.player_id, name: p.name || p.full_name || p.player_id, position: (Array.isArray(p.positions) ? p.positions[0] : p.positions) || "", image: "" })));
+          }
+        }
+      } catch (error) {
+        setError("An error occurred while fetching data");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  // --- Propose Trade Dialog State ---
+    fetchData();
+  }, [selectedLeagueId, selectedTeam]);
+
+  // --- Propose Trade Dialog State (must be before useEffect that uses proposeTo) ---
   const [proposeOpen, setProposeOpen] = useState(false);
-  const [proposeTo, setProposeTo] = useState<number | "">("");
-  const [selPlayers, setSelPlayers] = useState<number[]>([]);
+  const [proposeTo, setProposeTo] = useState<string>("");
+  const [selPlayers, setSelPlayers] = useState<(string | number)[]>([]);
+  const [selDraftPicks, setSelDraftPicks] = useState<string[]>([]);
   const [offerMoney, setOfferMoney] = useState("");
   const [selObjectives, setSelObjectives] = useState<number[]>([]);
-  const [selRequests, setSelRequests] = useState<number[]>([]);
+  const [selRequests, setSelRequests] = useState<(string | number)[]>([]);
+  const [otherTeamSquad, setOtherTeamSquad] = useState<Player[]>([]);
+  const [playerTakeoverPct, setPlayerTakeoverPct] = useState<Record<string, number>>({});
   const [requestFilter, setRequestFilter] = useState("");
+
+  // Fetch other team's squad when proposeTo is selected
+  useEffect(() => {
+    if (!proposeTo || !selectedLeagueId) {
+      setOtherTeamSquad([]);
+      return;
+    }
+    fetch(`/api/league/team-squad?leagueId=${selectedLeagueId}&teamId=${proposeTo}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.squad)) {
+          setOtherTeamSquad(json.squad);
+        } else {
+          setOtherTeamSquad([]);
+        }
+      })
+      .catch(() => setOtherTeamSquad([]));
+  }, [proposeTo, selectedLeagueId]);
 
   // --- View Offer Dialog State ---
   const [viewOpen, setViewOpen] = useState(false);
@@ -124,60 +177,74 @@ export default function TradeCenterPage() {
   const completed = trades.filter((t) => t.status !== "pending");
 
   // Toggle helper
-  const toggle = (arr: number[], id: number, on: boolean) =>
+  const toggle = (arr: (string | number)[], id: string | number, on: boolean) =>
     on ? [...arr, id] : arr.filter((x) => x !== id);
+  const toggleDraft = (id: string, on: boolean) =>
+    on ? [...selDraftPicks, id] : selDraftPicks.filter((x) => x !== id);
 
-  // Squad of selected team
-  const requestSquad: Player[] =
-    typeof proposeTo === "number" ? teamSquads[proposeTo] || [] : [];
+  const requestSquad: Player[] = [];
   const filteredRequests = requestSquad.filter((p) =>
     p.name.toLowerCase().includes(requestFilter.toLowerCase())
   );
 
-  function sendProposal() {
-    if (!proposeTo) {
+  async function sendProposal() {
+    if (!proposeTo || !userTeam) {
       toast.error("Select a team");
       return;
     }
-    const items: TradeItem[] = [
-      ...selPlayers.map((pid) => ({
-        item_type: "player" as const,
-        player: mySquad.find((p) => p.id === pid)!,
-      })),
-      ...(Number(offerMoney) > 0
-        ? [{ item_type: "money" as const, amount: Number(offerMoney) }]
-        : []),
-      ...selObjectives.map((oid) => ({
-        item_type: "objective" as const,
-        objective: objectives.find((o) => o.id === oid)!,
-      })),
-      ...selRequests.map((rid) => ({
-        item_type: "request" as const,
-        player: requestSquad.find((p) => p.id === rid)!,
-      })),
+    
+    const items = [
+      ...selPlayers.map((pid) => ({ type: "player" as const, playerId: String(pid), contractTakeoverPct: playerTakeoverPct[String(pid)] ?? 100 })),
+      ...(Number(offerMoney) > 0 ? [{ type: "money" as const, amount: Number(offerMoney) }] : []),
+      ...selObjectives.map((oid) => ({ type: "objective" as const, objectiveId: oid })),
+      ...selRequests.map((rid) => ({ type: "request" as const, playerId: String(rid) })),
+      ...selDraftPicks.map((did) => ({ type: "draft_pick" as const, draftPickId: did })),
     ];
+    
     if (!items.length) {
       toast.error("Add at least one asset");
       return;
     }
-    const toT = allTeams.find((t) => t.id === proposeTo)!;
-    const newT: Trade = {
-      id: Date.now(),
-      fromTeam: currentTeam,
-      toTeam: toT,
-      status: "pending",
-      items,
-    };
-    setTrades((t) => [newT, ...t]);
-    toast.success(`Proposal sent to ${toT.name}`);
-    // reset
-    setProposeOpen(false);
-    setProposeTo("");
-    setSelPlayers([]);
-    setOfferMoney("");
-    setSelObjectives([]);
-    setSelRequests([]);
-    setRequestFilter("");
+
+    try {
+      const response = await fetch('/api/trades', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromTeamId: userTeam.id,
+          toTeamId: proposeTo,
+          items: items
+        })
+      });
+
+      if (response.ok) {
+        toast.success("Proposal sent successfully!");
+        // reset
+        setProposeOpen(false);
+        setProposeTo("");
+        setSelPlayers([]);
+        setOfferMoney("");
+        setSelObjectives([]);
+        setSelRequests([]);
+        setSelDraftPicks([]);
+        setOtherTeamSquad([]);
+        setPlayerTakeoverPct({});
+        
+        // Refresh trades list
+        const tradesResponse = await fetch(`/api/trades?teamId=${userTeam.id}`);
+        if (tradesResponse.ok) {
+          const tradesData = await tradesResponse.json();
+          setTrades(tradesData.trades || []);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to send proposal");
+      }
+    } catch (error) {
+      toast.error("An error occurred while sending the proposal");
+    }
   }
 
   function openView(t: Trade) {
@@ -189,21 +256,74 @@ export default function TradeCenterPage() {
     setViewTrade(null);
   }
 
-  function accept() {
-    if (!viewTrade) return;
-    setTrades((t) =>
-      t.map((x) => (x.id === viewTrade.id ? { ...x, status: "accepted" } : x))
-    );
-    toast.success(`Trade #${viewTrade.id} accepted`);
-    closeView();
+  async function accept() {
+    if (!viewTrade || !userTeam) return;
+    
+    try {
+      const response = await fetch(`/api/trades/${viewTrade.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'accept' })
+      });
+
+      if (response.ok) {
+        toast.success(`Trade #${viewTrade.id} accepted`);
+        closeView();
+        
+        // Refresh trades list
+        const tradesResponse = await fetch(`/api/trades?teamId=${userTeam.id}`);
+        if (tradesResponse.ok) {
+          const tradesData = await tradesResponse.json();
+          setTrades(tradesData.trades || []);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to accept trade");
+      }
+    } catch (error) {
+      toast.error("An error occurred while accepting the trade");
+    }
   }
-  function reject() {
-    if (!viewTrade) return;
-    setTrades((t) =>
-      t.map((x) => (x.id === viewTrade.id ? { ...x, status: "rejected" } : x))
+
+  async function reject() {
+    if (!viewTrade || !userTeam) return;
+    
+    try {
+      const response = await fetch(`/api/trades/${viewTrade.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'reject' })
+      });
+
+      if (response.ok) {
+        toast.success(`Trade #${viewTrade.id} rejected`);
+        closeView();
+        
+        // Refresh trades list
+        const tradesResponse = await fetch(`/api/trades?teamId=${userTeam.id}`);
+        if (tradesResponse.ok) {
+          const tradesData = await tradesResponse.json();
+          setTrades(tradesData.trades || []);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to reject trade");
+      }
+    } catch (error) {
+      toast.error("An error occurred while rejecting the trade");
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <PageSkeleton variant="page" rows={4} />
+      </div>
     );
-    toast.error(`Trade #${viewTrade.id} rejected`);
-    closeView();
   }
 
   return (
@@ -230,19 +350,19 @@ export default function TradeCenterPage() {
               <div className="grid grid-cols-3 items-center gap-4">
                 <Label>To Team</Label>
                 <Select
-                  value={proposeTo.toString()}
-                  onValueChange={(v) => setProposeTo(Number(v))}
+                  value={proposeTo}
+                  onValueChange={(v) => setProposeTo(v)}
                 >
                   <SelectTrigger>
                     {proposeTo
-                      ? allTeams.find((t) => t.id === proposeTo)!.name
+                      ? leagueTeams.find((t) => t.id === proposeTo)?.name ?? "Select Team"
                       : "Select Team"}
                   </SelectTrigger>
                   <SelectContent>
-                    {allTeams
-                      .filter((t) => t.id !== currentTeam.id)
+                    {leagueTeams
+                      .filter((t) => t.id !== userTeam?.id)
                       .map((t) => (
-                        <SelectItem key={t.id} value={t.id.toString()}>
+                        <SelectItem key={t.id} value={String(t.id)}>
                           {t.name}
                         </SelectItem>
                       ))}
@@ -252,7 +372,7 @@ export default function TradeCenterPage() {
 
               {/* 2. Your Players */}
               <div>
-                <Label>Your Players</Label>
+                <Label>Your Players (Contract Takeover: % buying club takes)</Label>
                 <div className="flex flex-wrap gap-2 border p-2 rounded max-h-40 overflow-y-auto">
                   {mySquad.map((p) => (
                     <div key={p.id} className="flex items-center gap-2">
@@ -269,6 +389,23 @@ export default function TradeCenterPage() {
                         {p.name[0]}
                       </span>
                       <span className="text-sm">{p.name}</span>
+                      {selPlayers.includes(p.id) && (
+                        <Select
+                          value={String(playerTakeoverPct[String(p.id)] ?? 100)}
+                          onValueChange={(v) =>
+                            setPlayerTakeoverPct((prev) => ({ ...prev, [String(p.id)]: parseInt(v, 10) }))
+                          }
+                        >
+                          <SelectTrigger className="w-20 h-7 text-xs">
+                            {playerTakeoverPct[String(p.id)] ?? 100}%
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[100, 90, 80, 70, 60, 50, 40, 30, 20, 10].map((n) => (
+                              <SelectItem key={n} value={String(n)}>{n}%</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -286,58 +423,58 @@ export default function TradeCenterPage() {
                 />
               </div>
 
-              {/* 4. Objectives */}
-              <div>
-                <Label>Objectives</Label>
-                <div className="space-y-2">
-                  {objectives.map((o) => (
-                    <div key={o.id} className="flex items-center gap-2">
-                      <Checkbox
-                        checked={selObjectives.includes(o.id)}
-                        onCheckedChange={(chk) =>
-                          setSelObjectives((s) =>
-                            toggle(s, o.id, chk as boolean)
-                          )
-                        }
-                      />
-                      <span>{o.label}</span>
-                    </div>
-                  ))}
+              {/* 4. Draft Picks */}
+              {draftPicks.length > 0 && (
+                <div>
+                  <Label>Draft Picks (offer to trade)</Label>
+                  <div className="flex flex-wrap gap-2 border p-2 rounded max-h-40 overflow-y-auto">
+                    {draftPicks.map((p) => (
+                      <div key={p.id} className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selDraftPicks.includes(p.id)}
+                          onCheckedChange={(chk) =>
+                            setSelDraftPicks((s) => toggleDraft(p.id, chk as boolean))
+                          }
+                        />
+                        <span className="text-sm">Pick #{p.pick_number} (S{p.season})</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* 5. Request Players */}
+              {/* 5. Request Players - auto-loaded when team selected */}
               {proposeTo && (
                 <div className="space-y-2">
                   <Label>
                     Request from{" "}
-                    {allTeams.find((t) => t.id === proposeTo)!.name}
+                    {leagueTeams.find((t) => t.id === proposeTo)?.name ?? "—"}
                   </Label>
-                  <Input
-                    placeholder="Search squad..."
-                    value={requestFilter}
-                    onChange={(e) => setRequestFilter(e.target.value)}
-                  />
                   <div className="flex flex-wrap gap-2 border p-2 rounded max-h-40 overflow-y-auto">
-                    {filteredRequests.map((p) => (
-                      <div key={p.id} className="flex items-center gap-2">
-                        <Checkbox
-                          checked={selRequests.includes(p.id)}
-                          onCheckedChange={(chk) =>
-                            setSelRequests((s) =>
-                              toggle(s, p.id, chk as boolean)
-                            )
-                          }
-                        />
-                        <span
-                          className="w-8 h-8 bg-neutral-800 rounded-full 
-                                     flex items-center justify-center text-white"
-                        >
-                          {p.name[0]}
-                        </span>
-                        <span className="text-sm">{p.name}</span>
-                      </div>
-                    ))}
+                    {filteredRequests.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Loading squad...</p>
+                    ) : (
+                      filteredRequests.map((p) => (
+                        <div key={p.id} className="flex items-center gap-2">
+                          <Checkbox
+                            checked={selRequests.includes(p.id)}
+                            onCheckedChange={(chk) =>
+                              setSelRequests((s) => toggle(s, p.id, chk as boolean))
+                            }
+                          />
+                          <span
+                            className="w-8 h-8 bg-neutral-800 rounded-full 
+                                       flex items-center justify-center text-white"
+                          >
+                            {(p.name || "?")[0]}
+                          </span>
+                          <span className="text-sm truncate max-w-[120px]">{p.name}</span>
+                          {p.position && (
+                            <span className="text-xs text-muted-foreground">({p.position})</span>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
@@ -358,9 +495,16 @@ export default function TradeCenterPage() {
           <CardTitle>Pending Trades</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {pending.length === 0 && (
+          {trades.length === 0 ? (
+            <EmptyState
+              icon={Shuffle}
+              title="No trades yet"
+              description="Propose a trade to another team to swap players, draft picks, or money. Use the button above to get started."
+              action={{ label: "Propose Trade", onClick: () => setProposeOpen(true) }}
+            />
+          ) : pending.length === 0 ? (
             <p className="text-muted-foreground">No pending trades.</p>
-          )}
+          ) : null}
           {pending.map((t) => (
             <div
               key={t.id}
@@ -444,13 +588,18 @@ export default function TradeCenterPage() {
                     </div>
                   </>
                 )}
+                {it.item_type === "draft_pick" && (
+                  <span className="font-mono">
+                    Draft Pick #{it.draft_pick.pick_number} (S{it.draft_pick.season})
+                  </span>
+                )}
               </div>
             ))}
           </div>
 
           {/* Footer: only allow accept/reject if incoming */}
           <DialogFooter className="flex justify-end gap-2">
-            {viewTrade?.toTeam.id === currentTeam.id ? (
+            {viewTrade?.toTeam.id === userTeam?.id ? (
               <>
                 <Button variant="outline" onClick={reject}>
                   Reject

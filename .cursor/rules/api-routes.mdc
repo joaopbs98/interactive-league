@@ -1,0 +1,34 @@
+---
+description: "API route standards for Next.js App Router handlers"
+globs: ["app/api/**/*.ts"]
+alwaysApply: false
+---
+
+# API Route Standards
+
+## Authentication
+- Every API route that accesses user data MUST verify the session at the top using:
+  ```ts
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  ```
+
+## Response format
+- All responses MUST follow the envelope from `API_STANDARDS.md`:
+  - `{ success: true, data: { ... } }` for 200/201
+  - `{ success: false, error: "...", details?: "..." }` for errors
+
+## HTTP status codes
+- 200 Success, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 500 Internal Server Error.
+
+## Supabase client
+- Always use `import { createClient } from '@/utils/supabase/server';` in API routes.
+- Never instantiate a browser client inside an API route.
+
+## Error handling
+- Wrap database operations in try/catch.
+- Return the Supabase error message in the `details` field when safe to do so.
+- Never expose raw stack traces to the client.

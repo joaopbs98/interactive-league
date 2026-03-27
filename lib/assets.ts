@@ -10,6 +10,7 @@ import Loan from "@/assets/Loan.png";
 import BasicPack from "@/assets/StandardPack.png";
 import PrimePack from "@/assets/PrimePack.png";
 import ElitePack from "@/assets/ElitePack.png";
+import NoImage from "@/assets/noImage.jpeg";
 
 export const Images = {
   loginBanner: LoginImage,
@@ -24,4 +25,5 @@ export const Images = {
   BasicPack: BasicPack,
   PrimePack: PrimePack,
   ElitePack: ElitePack,
+  NoImage: NoImage,
 };

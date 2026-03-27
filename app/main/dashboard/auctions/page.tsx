@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useLeague } from "@/contexts/LeagueContext";
 import Image from "next/image";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -17,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -30,78 +30,27 @@ import { Label } from "@/components/ui/label";
 
 // Sonner imports
 import { Toaster, toast } from "sonner";
+import { Loader2 } from "lucide-react";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Auction = {
-  id: number;
+  id: string;
   player: {
-    id: number;
-    name: string;
-    position: string;
-    image: string;
-    rating: number;
+    player_id?: string;
+    id?: string;
+    name?: string;
+    full_name?: string;
+    positions?: string;
+    position?: string;
+    image?: string;
+    overall_rating?: number;
+    rating?: number;
   };
   timeLeft: string;
-  bestOffer: { teamName: string; rating: number };
+  bestOffer: { teamName: string; rating: number } | null;
   yourPosition: { status: "winning" | "losing" | "none"; rating?: number };
   finished?: boolean;
 };
-
-// Mock data
-const mockAuctions: Auction[] = [
-  {
-    id: 1,
-    player: {
-      id: 101,
-      name: "João Neves",
-      position: "CM",
-      image: "/images/players/joao-neves.jpg",
-      rating: 82,
-    },
-    timeLeft: "45m",
-    bestOffer: { teamName: "Southampton", rating: 87.5 },
-    yourPosition: { status: "losing", rating: 81.5 },
-  },
-  {
-    id: 2,
-    player: {
-      id: 102,
-      name: "Pedro Silva",
-      position: "ST",
-      image: "/images/players/pedro-silva.jpg",
-      rating: 79,
-    },
-    timeLeft: "30m",
-    bestOffer: { teamName: "Benfica", rating: 81.2 },
-    yourPosition: { status: "winning", rating: 81.2 },
-  },
-  {
-    id: 3,
-    player: {
-      id: 103,
-      name: "Miguel Costa",
-      position: "CB",
-      image: "/images/players/miguel-costa.jpg",
-      rating: 80,
-    },
-    timeLeft: "1h 10m",
-    bestOffer: { teamName: "Southampton", rating: 85.0 },
-    yourPosition: { status: "none" },
-  },
-  {
-    id: 4,
-    player: {
-      id: 104,
-      name: "Finished Player",
-      position: "GK",
-      image: "/images/players/joao-neves.jpg",
-      rating: 75,
-    },
-    timeLeft: "0m",
-    bestOffer: { teamName: "Benfica", rating: 80 },
-    yourPosition: { status: "none" },
-    finished: true,
-  },
-];
 
 // Helper to parse "45m" / "1h 10m" into seconds
 function parseTimeLeft(str: string) {
@@ -114,28 +63,46 @@ function parseTimeLeft(str: string) {
 }
 
 export default function AuctionsPage() {
+  const { selectedLeagueId, selectedTeam } = useLeague();
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [tab, setTab] = useState<"current" | "finished">("current");
-  const [timers, setTimers] = useState<Record<number, number>>({});
+  const [timers, setTimers] = useState<Record<string, number>>({});
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selected, setSelected] = useState<Auction | null>(null);
   const [bonus, setBonus] = useState("");
   const [wage, setWage] = useState("");
 
-  // Load mock data
+  // Load auctions data
   useEffect(() => {
-    setLoading(true);
-    setTimeout(() => {
-      setAuctions(mockAuctions);
-      setLoading(false);
-    }, 800);
-  }, []);
+    const fetchAuctions = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams({ status: tab === "current" ? "active" : "finished" });
+        if (selectedLeagueId) params.set("leagueId", selectedLeagueId);
+        const response = await fetch(`/api/auctions?${params}`);
+        if (response.ok) {
+          const data = await response.json();
+          const list = data.auctions ?? data.data ?? [];
+          setAuctions(Array.isArray(list) ? list : []);
+        } else {
+          setAuctions([]);
+        }
+      } catch (error) {
+        console.error("Error fetching auctions:", error);
+        setAuctions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAuctions();
+  }, [tab, selectedLeagueId]);
 
   // Setup countdowns
   useEffect(() => {
-    const init: Record<number, number> = {};
+    const init: Record<string, number> = {};
     auctions.forEach((a) => {
       if (!a.finished) init[a.id] = parseTimeLeft(a.timeLeft);
     });
@@ -147,8 +114,8 @@ export default function AuctionsPage() {
     const iv = setInterval(() => {
       setTimers((t) => {
         const c = { ...t };
-        Object.entries(c).forEach(([k, v]) => {
-          if (v > 0) c[+k]!--;
+        Object.keys(c).forEach((k) => {
+          if (c[k] > 0) c[k]--;
         });
         return c;
       });
@@ -156,13 +123,16 @@ export default function AuctionsPage() {
     return () => clearInterval(iv);
   }, []);
 
+  const getPlayerName = (p: Auction["player"]) =>
+    p?.full_name || p?.name || "Unknown";
+
   // Filter lists
   const currentList = useMemo(
     () =>
       auctions.filter(
         (a) =>
           !a.finished &&
-          a.player.name.toLowerCase().includes(filter.toLowerCase())
+          getPlayerName(a.player).toLowerCase().includes(filter.toLowerCase())
       ),
     [auctions, filter]
   );
@@ -171,7 +141,7 @@ export default function AuctionsPage() {
       auctions.filter(
         (a) =>
           a.finished &&
-          a.player.name.toLowerCase().includes(filter.toLowerCase())
+          getPlayerName(a.player).toLowerCase().includes(filter.toLowerCase())
       ),
     [auctions, filter]
   );
@@ -183,11 +153,59 @@ export default function AuctionsPage() {
     setDialogOpen(true);
   };
 
-  const confirmOffer = () => {
-    // TODO: call Supabase Edge Function here
-    setDialogOpen(false);
-    toast.success(`Offer placed for ${selected?.player.name}!`);
+  const confirmOffer = async () => {
+    if (!selected || !bonus || !wage) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auctions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          auctionId: selected.id,
+          amount: parseInt(bonus) + parseInt(wage),
+          leagueId: selectedLeagueId ?? undefined,
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`Bid placed for ${selected.player.name}!`);
+        setDialogOpen(false);
+        
+        // Refresh auctions list
+        const refreshParams = new URLSearchParams({ status: tab === 'current' ? 'active' : 'finished' });
+        if (selectedLeagueId) refreshParams.set('leagueId', selectedLeagueId);
+        const refreshResponse = await fetch(`/api/auctions?${refreshParams}`);
+        if (refreshResponse.ok) {
+          const data = await refreshResponse.json();
+          setAuctions(data.auctions || []);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to place bid");
+      }
+    } catch (error) {
+      toast.error("An error occurred while placing the bid");
+    }
   };
+
+  if (!selectedLeagueId || !selectedTeam) {
+    return (
+      <div className="p-8">
+        <h2 className="text-2xl font-bold mb-4">Auctions</h2>
+        <Card className="bg-neutral-900 border-neutral-800">
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <p className="text-lg font-medium mb-2">Select a league and team to continue</p>
+            <p className="text-sm">Choose a league from the Saves page to view auctions.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -196,7 +214,7 @@ export default function AuctionsPage() {
 
       {/* Header & Search */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-white">Auctions</h1>
+        <h2 className="text-2xl font-bold">Auctions</h2>
         <Input
           placeholder="Search player..."
           value={filter}
@@ -219,11 +237,16 @@ export default function AuctionsPage() {
         {/* Current Auctions */}
         <TabsContent value="current">
           {loading ? (
-            <Skeleton className="h-96 w-full" />
+            <div className="p-6">
+              <PageSkeleton variant="table" rows={6} />
+            </div>
           ) : currentList.length === 0 ? (
-            <p className="text-center text-muted-foreground py-16">
-              No current auctions.
-            </p>
+            <Card className="bg-neutral-900 border-neutral-800">
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <p className="text-lg font-medium mb-2">No active auctions.</p>
+                <p className="text-sm">Check back when the transfer window opens.</p>
+              </CardContent>
+            </Card>
           ) : (
             <Card>
               <CardContent className="overflow-auto">
@@ -239,7 +262,8 @@ export default function AuctionsPage() {
                   </TableHeader>
                   <TableBody>
                     {currentList.map((auc) => {
-                      const secs = timers[auc.id] || 0;
+                      const idStr = String(auc.id);
+                      const secs = timers[idStr] || 0;
                       const total = parseTimeLeft(auc.timeLeft);
                       const pct = total > 0 ? (secs / total) * 100 : 0;
                       const mins = Math.floor(secs / 60);
@@ -251,6 +275,9 @@ export default function AuctionsPage() {
                             ? `${hrs}h ${remM}m`
                             : `${remM}m`
                           : "0m";
+                      const rating = auc.player?.overall_rating ?? auc.player?.rating ?? 0;
+                      const pos = auc.player?.positions ?? auc.player?.position ?? "—";
+                      const imgSrc = auc.player?.image || "/assets/noImage.jpeg";
 
                       return (
                         <TableRow key={auc.id} className="hover:bg-[#2A2A2A]">
@@ -258,23 +285,21 @@ export default function AuctionsPage() {
                             <div className="flex items-center gap-3">
                               <div className="relative w-12 h-12">
                                 <Image
-                                  src={auc.player.image}
-                                  alt={auc.player.name}
+                                  src={imgSrc}
+                                  alt={getPlayerName(auc.player)}
                                   fill
                                   className="rounded-full object-cover"
                                 />
                                 <span className="absolute -top-1 -right-1">
-                                  <Badge variant="secondary">
-                                    {auc.player.rating}
-                                  </Badge>
+                                  <Badge variant="secondary">{rating}</Badge>
                                 </span>
                               </div>
                               <div>
-                                <p className="font-medium text-white">
-                                  {auc.player.name}
+                                <p className="font-medium">
+                                  {getPlayerName(auc.player)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {auc.player.position}
+                                  {pos}
                                 </p>
                               </div>
                             </div>
@@ -289,10 +314,16 @@ export default function AuctionsPage() {
                           </TableCell>
 
                           <TableCell>
-                            <p>{auc.bestOffer.teamName}</p>
-                            <Badge variant="secondary">
-                              {auc.bestOffer.rating}
-                            </Badge>
+                            {auc.bestOffer ? (
+                              <>
+                                <p>{auc.bestOffer.teamName}</p>
+                                <Badge variant="secondary">
+                                  {auc.bestOffer.rating}
+                                </Badge>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </TableCell>
 
                           <TableCell>
@@ -331,11 +362,16 @@ export default function AuctionsPage() {
         {/* Finished Auctions */}
         <TabsContent value="finished">
           {loading ? (
-            <Skeleton className="h-96 w-full" />
+            <div className="p-6">
+              <PageSkeleton variant="table" rows={6} />
+            </div>
           ) : finishedList.length === 0 ? (
-            <p className="text-center text-muted-foreground py-16">
-              No finished auctions.
-            </p>
+            <Card className="bg-neutral-900 border-neutral-800">
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <p className="text-lg font-medium mb-2">No finished auctions</p>
+                <p className="text-sm">Completed auctions will appear here.</p>
+              </CardContent>
+            </Card>
           ) : (
             <Card>
               <CardContent className="overflow-auto">
@@ -354,16 +390,16 @@ export default function AuctionsPage() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Image
-                              src={auc.player.image}
-                              alt={auc.player.name}
+                              src={auc.player?.image || "/assets/noImage.jpeg"}
+                              alt={getPlayerName(auc.player)}
                               width={32}
                               height={32}
-                              className="rounded-full"
+                              className="rounded-full object-cover"
                             />
-                            <span>{auc.player.name}</span>
+                            <span>{getPlayerName(auc.player)}</span>
                           </div>
                         </TableCell>
-                        <TableCell>{auc.bestOffer.rating}</TableCell>
+                        <TableCell>{auc.bestOffer?.rating ?? "—"}</TableCell>
                         <TableCell>
                           {auc.yourPosition.status === "none"
                             ? "—"
