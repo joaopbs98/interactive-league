@@ -1,471 +1,133 @@
-// app/(dashboard)/auctions/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLeague } from "@/contexts/LeagueContext";
-import Image from "next/image";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-
-// Sonner imports
-import { Toaster, toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { PageHeader } from "@/components/PageHeader";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Gavel, History, Plus, Ticket, UserRound } from "lucide-react";
+import { toast, Toaster } from "sonner";
+import { calculateUnsoldFee } from "@/lib/auctionRules.mjs";
+import { ticketRule } from "@/lib/upgradeTicketRules.mjs";
 
+type Bid = { id: string; amount: number; created_at: string; team: { id: string; name: string } };
 type Auction = {
-  id: string;
-  player: {
-    player_id?: string;
-    id?: string;
-    name?: string;
-    full_name?: string;
-    positions?: string;
-    position?: string;
-    image?: string;
-    overall_rating?: number;
-    rating?: number;
-  };
-  timeLeft: string;
-  bestOffer: { teamName: string; rating: number } | null;
-  yourPosition: { status: "winning" | "losing" | "none"; rating?: number };
-  finished?: boolean;
+  id: string; mode: "dutch" | "auction_house"; asset_type: "player" | "upgrade_ticket";
+  player?: { player_id: string; full_name?: string; player_name?: string; name?: string; rating?: number; overall_rating?: number; positions?: string };
+  ticket?: { id: string; tier: string }; seller?: { id: string; name: string }; winner?: { id: string; name: string };
+  starting_bid: number; reserve_amount?: number; end_time: string; outcome?: string; unsold_fee?: number;
+  winning_amount?: number; currentBid?: number; minimumNextBid: number; leader?: { id: string; name: string };
+  bids: Bid[]; isSeller: boolean; viewerBid?: number;
 };
+type AssetData = { teamId?: string; players: any[]; tickets: any[] };
 
-// Helper to parse "45m" / "1h 10m" into seconds
-function parseTimeLeft(str: string) {
-  let secs = 0;
-  const h = str.match(/(\d+)h/);
-  if (h) secs += +h[1] * 3600;
-  const m = str.match(/(\d+)m/);
-  if (m) secs += +m[1] * 60;
-  return secs;
+const money = (value?: number | null) => value == null ? "—" : `$${value.toLocaleString()}`;
+const assetName = (auction: Auction) => auction.asset_type === "upgrade_ticket"
+  ? `${auction.ticket?.tier?.[0]?.toUpperCase() ?? ""}${auction.ticket?.tier?.slice(1) ?? ""} upgrade ticket`
+  : auction.player?.full_name || auction.player?.player_name || auction.player?.name || "Player";
+
+function countdown(endTime: string) {
+  const seconds = Math.max(0, Math.floor((new Date(endTime).getTime() - Date.now()) / 1000));
+  const days = Math.floor(seconds / 86400); const hours = Math.floor((seconds % 86400) / 3600); const minutes = Math.floor((seconds % 3600) / 60);
+  return days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 export default function AuctionsPage() {
-  const { selectedLeagueId, selectedTeam } = useLeague();
+  const { selectedLeagueId } = useLeague();
+  const [mode, setMode] = useState<"dutch" | "auction_house">("dutch");
+  const [view, setView] = useState<"active" | "finished" | "mine">("active");
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("");
-  const [tab, setTab] = useState<"current" | "finished">("current");
-  const [timers, setTimers] = useState<Record<string, number>>({});
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selected, setSelected] = useState<Auction | null>(null);
-  const [bonus, setBonus] = useState("");
-  const [wage, setWage] = useState("");
+  const [bidLot, setBidLot] = useState<Auction | null>(null);
+  const [bid, setBid] = useState("");
+  const [listingOpen, setListingOpen] = useState(false);
+  const [assets, setAssets] = useState<AssetData>({ players: [], tickets: [] });
+  const [assetKey, setAssetKey] = useState("");
+  const [startingBid, setStartingBid] = useState("100000");
+  const [reserve, setReserve] = useState("0");
+  const [deadline, setDeadline] = useState("");
+  const [, tick] = useState(0);
 
-  // Load auctions data
-  useEffect(() => {
-    const fetchAuctions = async () => {
-      try {
-        setLoading(true);
-        const params = new URLSearchParams({ status: tab === "current" ? "active" : "finished" });
-        if (selectedLeagueId) params.set("leagueId", selectedLeagueId);
-        const response = await fetch(`/api/auctions?${params}`);
-        if (response.ok) {
-          const data = await response.json();
-          const list = data.auctions ?? data.data ?? [];
-          setAuctions(Array.isArray(list) ? list : []);
-        } else {
-          setAuctions([]);
-        }
-      } catch (error) {
-        console.error("Error fetching auctions:", error);
-        setAuctions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchAuctions = useCallback(async () => {
+    if (!selectedLeagueId) return setLoading(false);
+    setLoading(true);
+    const status = view === "finished" ? "finished" : "active";
+    const response = await fetch(`/api/auctions?leagueId=${selectedLeagueId}&mode=${mode}&status=${status}`);
+    const json = await response.json();
+    if (!response.ok) toast.error(json.error ?? "Could not load auctions");
+    setAuctions(json.auctions ?? []); setLoading(false);
+  }, [selectedLeagueId, mode, view]);
 
-    fetchAuctions();
-  }, [tab, selectedLeagueId]);
+  useEffect(() => { fetchAuctions(); }, [fetchAuctions]);
+  useEffect(() => { const id = setInterval(() => tick((x) => x + 1), 30000); return () => clearInterval(id); }, []);
+  const visible = useMemo(() => view === "mine" ? auctions.filter((a) => a.isSeller || a.viewerBid != null) : auctions, [auctions, view]);
 
-  // Setup countdowns
-  useEffect(() => {
-    const init: Record<string, number> = {};
-    auctions.forEach((a) => {
-      if (!a.finished) init[a.id] = parseTimeLeft(a.timeLeft);
-    });
-    setTimers(init);
-  }, [auctions]);
-
-  // Tick timer every second
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setTimers((t) => {
-        const c = { ...t };
-        Object.keys(c).forEach((k) => {
-          if (c[k] > 0) c[k]--;
-        });
-        return c;
-      });
-    }, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  const getPlayerName = (p: Auction["player"]) =>
-    p?.full_name || p?.name || "Unknown";
-
-  // Filter lists
-  const currentList = useMemo(
-    () =>
-      auctions.filter(
-        (a) =>
-          !a.finished &&
-          getPlayerName(a.player).toLowerCase().includes(filter.toLowerCase())
-      ),
-    [auctions, filter]
-  );
-  const finishedList = useMemo(
-    () =>
-      auctions.filter(
-        (a) =>
-          a.finished &&
-          getPlayerName(a.player).toLowerCase().includes(filter.toLowerCase())
-      ),
-    [auctions, filter]
-  );
-
-  const openOfferModal = (auc: Auction) => {
-    setSelected(auc);
-    setBonus("");
-    setWage("");
-    setDialogOpen(true);
-  };
-
-  const confirmOffer = async () => {
-    if (!selected || !bonus || !wage) {
-      toast.error("Please fill in all fields");
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/auctions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          auctionId: selected.id,
-          amount: parseInt(bonus) + parseInt(wage),
-          leagueId: selectedLeagueId ?? undefined,
-        })
-      });
-
-      if (response.ok) {
-        toast.success(`Bid placed for ${selected.player.name}!`);
-        setDialogOpen(false);
-        
-        // Refresh auctions list
-        const refreshParams = new URLSearchParams({ status: tab === 'current' ? 'active' : 'finished' });
-        if (selectedLeagueId) refreshParams.set('leagueId', selectedLeagueId);
-        const refreshResponse = await fetch(`/api/auctions?${refreshParams}`);
-        if (refreshResponse.ok) {
-          const data = await refreshResponse.json();
-          setAuctions(data.auctions || []);
-        }
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to place bid");
-      }
-    } catch (error) {
-      toast.error("An error occurred while placing the bid");
-    }
-  };
-
-  if (!selectedLeagueId || !selectedTeam) {
-    return (
-      <div className="p-8">
-        <h2 className="text-2xl font-bold mb-4">Auctions</h2>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            <p className="text-lg font-medium mb-2">Select a league and team to continue</p>
-            <p className="text-sm">Choose a league from the Saves page to view auctions.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  async function openListing() {
+    if (!selectedLeagueId) return;
+    const response = await fetch(`/api/auctions/assets?leagueId=${selectedLeagueId}`);
+    const json = await response.json();
+    if (!response.ok) return toast.error(json.error ?? "Could not load eligible assets");
+    setAssets(json); setListingOpen(true);
   }
 
-  return (
-    <div className="p-8 space-y-6">
-      {/* Sonner Toaster */}
-      <Toaster richColors position="top-center" />
+  async function placeBid() {
+    if (!bidLot || !selectedLeagueId) return;
+    const response = await fetch("/api/auctions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auctionId: bidLot.id, amount: Number(bid), leagueId: selectedLeagueId }) });
+    const json = await response.json();
+    if (!response.ok) return toast.error(json.error ?? "Bid failed");
+    toast.success("Bid placed"); setBidLot(null); setBid(""); fetchAuctions();
+  }
 
-      {/* Header & Search */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Auctions</h2>
-        <Input
-          placeholder="Search player..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="max-w-sm"
-        />
-      </div>
+  async function createListing() {
+    const [assetType, assetId] = assetKey.split(":");
+    const response = await fetch("/api/auctions/listings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ leagueId: selectedLeagueId, teamId: assets.teamId, assetType, assetId, startingBid: Number(startingBid), reserve: Number(reserve), endTime: new Date(deadline).toISOString() }) });
+    const json = await response.json();
+    if (!response.ok) return toast.error(json.error ?? "Listing failed");
+    toast.success("Auction listing published"); setListingOpen(false); setAssetKey(""); fetchAuctions();
+  }
 
-      {/* Tabs */}
-      <Tabs value={tab}>
-        <TabsList>
-          <TabsTrigger value="current">
-            Current ({currentList.length})
-          </TabsTrigger>
-          <TabsTrigger value="finished">
-            Finished ({finishedList.length})
-          </TabsTrigger>
-        </TabsList>
+  async function cancelListing(id: string) {
+    const response = await fetch("/api/auctions/listings", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auctionId: id }) });
+    const json = await response.json();
+    if (!response.ok) return toast.error(json.error ?? "Cancellation failed");
+    toast.success("Listing cancelled"); fetchAuctions();
+  }
 
-        {/* Current Auctions */}
-        <TabsContent value="current">
-          {loading ? (
-            <div className="p-6">
-              <PageSkeleton variant="table" rows={6} />
-            </div>
-          ) : currentList.length === 0 ? (
-            <Card className="bg-neutral-900 border-neutral-800">
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <p className="text-lg font-medium mb-2">No active auctions.</p>
-                <p className="text-sm">Check back when the transfer window opens.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="overflow-auto">
-                <Table className="min-w-full table-auto">
-                  <TableHeader className="sticky top-0 bg-[#1F1F1F]">
-                    <TableRow>
-                      <TableHead>Player</TableHead>
-                      <TableHead>Time Left</TableHead>
-                      <TableHead>Best Offer</TableHead>
-                      <TableHead>Your Position</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {currentList.map((auc) => {
-                      const idStr = String(auc.id);
-                      const secs = timers[idStr] || 0;
-                      const total = parseTimeLeft(auc.timeLeft);
-                      const pct = total > 0 ? (secs / total) * 100 : 0;
-                      const mins = Math.floor(secs / 60);
-                      const hrs = Math.floor(mins / 60);
-                      const remM = mins % 60;
-                      const disp =
-                        secs > 0
-                          ? hrs
-                            ? `${hrs}h ${remM}m`
-                            : `${remM}m`
-                          : "0m";
-                      const rating = auc.player?.overall_rating ?? auc.player?.rating ?? 0;
-                      const pos = auc.player?.positions ?? auc.player?.position ?? "—";
-                      const imgSrc = auc.player?.image || "/assets/noImage.jpeg";
+  if (loading && auctions.length === 0) return <div className="p-6"><PageSkeleton variant="page" rows={6} /></div>;
+  return <div className="p-6 flex flex-col gap-6 max-w-[1400px] mx-auto">
+    <Toaster position="top-center" richColors /><Breadcrumbs />
+    <PageHeader eyebrow="Transfer Season" title="Auctions" subtitle="Public bidding with real-world deadlines and $100,000 increments" actions={mode === "auction_house" ? <Button onClick={openListing}><Plus className="h-4 w-4 mr-2" />List an asset</Button> : undefined} />
+    {!selectedLeagueId ? <Card><CardContent className="p-6 text-muted-foreground">Choose a league from Saves to view auctions.</CardContent></Card> : <Tabs value={mode} onValueChange={(x) => { setMode(x as any); setView("active"); }}>
+      <TabsList><TabsTrigger value="dutch">Dutch Auction</TabsTrigger><TabsTrigger value="auction_house">Auction House</TabsTrigger></TabsList>
+      {(["dutch", "auction_house"] as const).map((tabMode) => <TabsContent key={tabMode} value={tabMode} className="space-y-4">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Auction view">
+          <Button variant={view === "active" ? "default" : "outline"} onClick={() => setView("active")}>Active</Button>
+          <Button variant={view === "finished" ? "default" : "outline"} onClick={() => setView("finished")}><History className="h-4 w-4 mr-2" />Finished</Button>
+          <Button variant={view === "mine" ? "default" : "outline"} onClick={() => setView("mine")}>My activity</Button>
+        </div>
+        {visible.length === 0 ? <Card><CardContent className="p-10 text-center"><Gavel className="h-8 w-8 mx-auto mb-3 text-muted-foreground" /><p className="font-medium">No {view === "finished" ? "finished" : "active"} {tabMode === "dutch" ? "Dutch Auction" : "Auction House"} lots</p><p className="text-sm text-muted-foreground mt-1">{tabMode === "dutch" ? "The host publishes verified player pools from Host Controls." : "Teams can list owned players and unused upgrade tickets during transfer season."}</p></CardContent></Card> : <div className="space-y-3">{visible.map((auction) => <Card key={auction.id}><CardContent className="p-4 flex flex-col lg:flex-row lg:items-center gap-4">
+          <div className="flex items-center gap-3 min-w-0 lg:w-72">{auction.asset_type === "player" ? <UserRound className="h-8 w-8 text-muted-foreground" /> : <Ticket className="h-8 w-8 text-accent" />}<div className="min-w-0"><p className="font-semibold truncate">{assetName(auction)}</p><p className="text-xs text-muted-foreground">{auction.asset_type === "player" ? `${auction.player?.rating ?? auction.player?.overall_rating ?? "—"} OVR · ${auction.player?.positions ?? "—"}` : `${ticketRule(auction.ticket?.tier).description} Usable from Squad.`}</p></div></div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1 text-sm"><div><p className="text-xs text-muted-foreground">{view === "finished" ? "Final bid" : "Current bid"}</p><p className="font-medium tabular-nums">{money(auction.currentBid ?? auction.winning_amount)}</p></div><div><p className="text-xs text-muted-foreground">Leader</p><p>{auction.leader?.name ?? auction.winner?.name ?? "No bids"}</p></div><div><p className="text-xs text-muted-foreground">{view === "finished" ? "Outcome" : "Deadline"}</p><p><Badge variant="outline">{view === "finished" ? auction.outcome : countdown(auction.end_time)}</Badge></p>{view === "finished" && Number(auction.unsold_fee) > 0 && <p className="mt-1 text-xs text-status-negative tabular-nums">Unsold fee {money(auction.unsold_fee)}</p>}</div><div><p className="text-xs text-muted-foreground">Source</p><p>{auction.seller?.name ?? "Host pool"}</p></div></div>
+          <div className="flex gap-2 lg:justify-end">{view !== "finished" && !auction.isSeller && <Button aria-label={`Bid ${money(auction.minimumNextBid)} on ${assetName(auction)}`} className="min-h-11" onClick={() => { setBidLot(auction); setBid(String(auction.minimumNextBid)); }}>Bid {money(auction.minimumNextBid)}</Button>}{view !== "finished" && auction.isSeller && auction.bids.length === 0 && <Button aria-label={`Cancel listing for ${assetName(auction)}`} variant="outline" className="min-h-11" onClick={() => cancelListing(auction.id)}>Cancel</Button>}</div>
+          {auction.bids.length > 0 && <details className="lg:w-52"><summary className="cursor-pointer text-sm text-muted-foreground">{auction.bids.length} public bid{auction.bids.length === 1 ? "" : "s"}</summary><ol className="mt-2 space-y-1 text-xs">{auction.bids.map((b) => <li key={b.id} className="flex justify-between gap-2"><span>{b.team?.name}</span><span className="tabular-nums">{money(b.amount)}</span></li>)}</ol></details>}
+        </CardContent></Card>)}</div>}
+      </TabsContent>)}
+    </Tabs>}
 
-                      return (
-                        <TableRow key={auc.id} className="hover:bg-[#2A2A2A]">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="relative w-12 h-12">
-                                <Image
-                                  src={imgSrc}
-                                  alt={getPlayerName(auc.player)}
-                                  fill
-                                  className="rounded-full object-cover"
-                                />
-                                <span className="absolute -top-1 -right-1">
-                                  <Badge variant="secondary">{rating}</Badge>
-                                </span>
-                              </div>
-                              <div>
-                                <p className="font-medium">
-                                  {getPlayerName(auc.player)}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {pos}
-                                </p>
-                              </div>
-                            </div>
-                          </TableCell>
+    <Dialog open={!!bidLot} onOpenChange={(open) => !open && setBidLot(null)}><DialogContent><DialogHeader><DialogTitle>Place public bid</DialogTitle><DialogDescription>Your team and bid amount will be visible to every manager. Minimum: {money(bidLot?.minimumNextBid)}.</DialogDescription></DialogHeader><Label htmlFor="auction-bid">Bid amount</Label><Input id="auction-bid" type="number" min={bidLot?.minimumNextBid} step={100000} value={bid} onChange={(e) => setBid(e.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setBidLot(null)}>Cancel</Button><Button onClick={placeBid}>Place bid</Button></DialogFooter></DialogContent></Dialog>
 
-                          <TableCell className="space-y-1">
-                            <p className="text-sm">{disp}</p>
-                            <Progress
-                              value={pct}
-                              className="h-2 bg-[#333] rounded-full"
-                            />
-                          </TableCell>
-
-                          <TableCell>
-                            {auc.bestOffer ? (
-                              <>
-                                <p>{auc.bestOffer.teamName}</p>
-                                <Badge variant="secondary">
-                                  {auc.bestOffer.rating}
-                                </Badge>
-                              </>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-
-                          <TableCell>
-                            {auc.yourPosition.status === "winning" ? (
-                              <Badge variant="default">
-                                Winning ({auc.yourPosition.rating})
-                              </Badge>
-                            ) : auc.yourPosition.status === "losing" ? (
-                              <Badge variant="destructive">
-                                Losing ({auc.yourPosition.rating})
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline">None</Badge>
-                            )}
-                          </TableCell>
-
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              onClick={() => openOfferModal(auc)}
-                              disabled={secs === 0}
-                            >
-                              Make Offer
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* Finished Auctions */}
-        <TabsContent value="finished">
-          {loading ? (
-            <div className="p-6">
-              <PageSkeleton variant="table" rows={6} />
-            </div>
-          ) : finishedList.length === 0 ? (
-            <Card className="bg-neutral-900 border-neutral-800">
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <p className="text-lg font-medium mb-2">No finished auctions</p>
-                <p className="text-sm">Completed auctions will appear here.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="overflow-auto">
-                <Table className="min-w-full table-auto">
-                  <TableHeader className="sticky top-0 bg-[#1F1F1F]">
-                    <TableRow>
-                      <TableHead>Player</TableHead>
-                      <TableHead>Final Offer</TableHead>
-                      <TableHead>Your Bid</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {finishedList.map((auc) => (
-                      <TableRow key={auc.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Image
-                              src={auc.player?.image || "/assets/noImage.jpeg"}
-                              alt={getPlayerName(auc.player)}
-                              width={32}
-                              height={32}
-                              className="rounded-full object-cover"
-                            />
-                            <span>{getPlayerName(auc.player)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{auc.bestOffer?.rating ?? "—"}</TableCell>
-                        <TableCell>
-                          {auc.yourPosition.status === "none"
-                            ? "—"
-                            : auc.yourPosition.rating}
-                        </TableCell>
-                        <TableCell>
-                          {auc.yourPosition.status === "winning" ? (
-                            <Badge variant="default">Won</Badge>
-                          ) : auc.yourPosition.status === "losing" ? (
-                            <Badge variant="destructive">Lost</Badge>
-                          ) : (
-                            <Badge variant="outline">—</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {/* Offer Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg sm:mx-auto">
-          <DialogHeader>
-            <DialogTitle>Make an Offer</DialogTitle>
-            <DialogDescription>
-              Submit a sealed bid for{" "}
-              <span className="font-semibold">{selected?.player.name}</span>.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-3 items-center gap-4">
-              <Label htmlFor="bonus">Signing Bonus (€)</Label>
-              <Input
-                id="bonus"
-                type="number"
-                value={bonus}
-                onChange={(e) => setBonus(e.target.value)}
-                className="col-span-2"
-                placeholder="e.g. 5,000,000"
-              />
-            </div>
-            <div className="grid grid-cols-3 items-center gap-4">
-              <Label htmlFor="wage">Annual Wage (€)</Label>
-              <Input
-                id="wage"
-                type="number"
-                value={wage}
-                onChange={(e) => setWage(e.target.value)}
-                className="col-span-2"
-                placeholder="e.g. 3,000,000"
-              />
-            </div>
-          </div>
-          <DialogFooter className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmOffer}>Confirm</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+    <Dialog open={listingOpen} onOpenChange={setListingOpen}><DialogContent><DialogHeader><DialogTitle>List an asset</DialogTitle><DialogDescription>The asset is locked while listed. Unsold assets stay with your club and may incur a fee.</DialogDescription></DialogHeader>
+      <div className="space-y-4"><div><Label>Player or unused ticket</Label><Select value={assetKey} onValueChange={setAssetKey}><SelectTrigger className="mt-1"><SelectValue placeholder="Choose an eligible asset" /></SelectTrigger><SelectContent>{assets.players.map((p) => <SelectItem key={p.player_id} value={`player:${p.player_id}`} disabled={!p.eligible}>{p.full_name || p.player_name} · {p.rating} OVR{!p.eligible ? " · already listed" : ""}</SelectItem>)}{assets.tickets.map((t) => <SelectItem key={t.id} value={`upgrade_ticket:${t.id}`} disabled={!t.eligible}>{t.tier} upgrade ticket{!t.eligible ? " · already listed" : ""}</SelectItem>)}</SelectContent></Select>{assets.tickets.length === 0 && <p className="mt-2 text-xs text-muted-foreground">No unused upgrade tickets are available. Tickets earned from packs can be used from Squad or listed here during transfer season.</p>}</div>
+      <div className="grid grid-cols-2 gap-3"><div><Label htmlFor="starting-bid">Starting bid</Label><Input id="starting-bid" type="number" step={100000} min={0} value={startingBid} onChange={(e) => setStartingBid(e.target.value)} /></div><div><Label htmlFor="reserve">Reserve</Label><Input id="reserve" type="number" step={100000} min={0} value={reserve} onChange={(e) => setReserve(e.target.value)} /></div></div><div><Label htmlFor="deadline">Real-world deadline</Label><Input id="deadline" type="datetime-local" value={deadline} onInput={(e) => setDeadline(e.currentTarget.value)} /></div>
+      <div className="rounded-md border p-3 text-sm"><p className="font-medium">Unsold fee: {money(calculateUnsoldFee(Number(reserve)))}</p><p className="text-xs text-muted-foreground mt-1">4% of reserve, rounded to $100,000, with a $100,000 minimum. A $0 reserve has no fee.</p></div></div>
+      <DialogFooter><Button variant="outline" onClick={() => setListingOpen(false)}>Cancel</Button><Button disabled={!assetKey || !deadline} onClick={createListing}>Publish listing</Button></DialogFooter></DialogContent></Dialog>
+  </div>;
 }

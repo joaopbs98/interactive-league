@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -15,14 +15,19 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Ticket, ArrowUpDown, Filter, Users } from "lucide-react";
+import { Ticket, ArrowUpDown, Filter, Users, Shield, Sparkles } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { EmptyState } from "@/components/EmptyState";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { PageHeader } from "@/components/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatPlayerName } from "@/utils/playerUtils";
 import { getRatingColorClasses } from "@/utils/ratingColors";
 import { Images } from "@/lib/assets";
+import { cn } from "@/lib/utils";
+import { toast, Toaster } from "sonner";
+import { eligibleTicketPlayers, ticketRule } from "@/lib/upgradeTicketRules.mjs";
 
 // Player interface
 interface Player {
@@ -141,7 +146,7 @@ const formatWage = (wage?: number | string | null): string => {
   return `€${w}`;
 };
 
-type UpgradeTicket = { id: string; tier: string; used_on_player_id: string | null };
+type UpgradeTicket = { id: string; tier: string; used_on_player_id: string | null; eligible_player_ids?: string[] };
 const TIER_BOOST: Record<string, number> = { bronze: 1, silver: 2, gold: 3, platinum: 4 };
 
 function SquadPageContent() {
@@ -283,135 +288,120 @@ function SquadPageContent() {
     ? Math.round(allPlayers.reduce((sum, p) => sum + p.overall_rating, 0) / totalPlayers)
     : 0;
 
+  const squadFillClasses =
+    totalPlayers < 21
+      ? { text: "text-status-negative", bg: "bg-status-negative" }
+      : totalPlayers > 23
+        ? { text: "text-status-warning", bg: "bg-status-warning" }
+        : { text: "text-status-positive", bg: "bg-status-positive" };
+  const squadFillPct = Math.min(100, Math.round((totalPlayers / 23) * 100));
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 flex flex-col gap-6 max-w-[1400px] mx-auto">
+      <Toaster position="top-center" richColors />
+      <Breadcrumbs />
+
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">{teamData.name} Squad</h1>
-          <p className="text-muted-foreground mt-2">
-            {totalPlayers} / 23 players (21-23 required at registration) • Avg: {averageRating}
-          </p>
+      <PageHeader
+        eyebrow="Team Management"
+        title={`${teamData.name} Squad`}
+        subtitle="Manage your roster, monitor squad strength, and apply upgrade tickets"
+        stats={[
+          { label: "Size", value: `${totalPlayers}/23`, emphasis: true },
+          { label: "Avg", value: averageRating },
+          { label: "Formation", value: teamData.formation || "—" },
+          { label: "CompIdx", value: teamData.comp_index != null ? teamData.comp_index.toFixed(1) : "—" },
+          { label: "Wage", value: formatWage(totalWage) },
+        ]}
+        actions={
+          <Button onClick={() => router.push('/main/dashboard/tactics')}>
+            <Shield className="h-4 w-4 mr-2" />
+            Manage Tactics
+          </Button>
+        }
+      />
+
+      {/* Registration progress — a thin attached strip, not a separate panel repeating the "Size" stat above */}
+      <div className="-mt-3">
+        <div className="h-1 w-full rounded-full bg-surface-3 overflow-hidden">
+          <div
+            className={`h-full rounded-full ${squadFillClasses.bg} transition-all duration-300`}
+            style={{ width: `${squadFillPct}%` }}
+          />
         </div>
-        <Button 
-          onClick={() => router.push('/main/dashboard/tactics')}
-          variant="outline"
-        >
-          Manage Tactics
-        </Button>
+        {totalPlayers < 21 && (
+          <p className="text-xs text-status-negative mt-1">
+            {21 - totalPlayers} more player{21 - totalPlayers !== 1 ? "s" : ""} needed to register (21–23 required)
+          </p>
+        )}
       </div>
 
-      {/* Squad Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Players</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{totalPlayers}</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Average Rating</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{averageRating}</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Formation</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{teamData.formation || 'Not Set'}</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">CompIndex</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{teamData.comp_index != null ? teamData.comp_index.toFixed(1) : "—"}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Wage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground">{formatWage(totalWage)}</div>
-          </CardContent>
-        </Card>
+      {/* Controls */}
+      <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex flex-wrap gap-3 items-center">
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "rating" | "wage" | "position")}>
+            <SelectTrigger className="w-40">
+              <ArrowUpDown className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rating">Rating</SelectItem>
+              <SelectItem value="wage">Wage</SelectItem>
+              <SelectItem value="position">Position</SelectItem>
+            </SelectContent>
+          </Select>
+          <label className="flex items-center gap-2 text-sm cursor-pointer text-muted-foreground hover:text-foreground transition-colors duration-150">
+            <Checkbox checked={filterInjured} onCheckedChange={(c) => setFilterInjured(!!c)} />
+            <Filter className="h-4 w-4" />
+            Injured only
+          </label>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 items-center">
-        <Select value={sortBy} onValueChange={(v) => setSortBy(v as "rating" | "wage" | "position")}>
-          <SelectTrigger className="w-40">
-            <ArrowUpDown className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="rating">Rating</SelectItem>
-            <SelectItem value="wage">Wage</SelectItem>
-            <SelectItem value="position">Position</SelectItem>
-          </SelectContent>
-        </Select>
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <Checkbox checked={filterInjured} onCheckedChange={(c) => setFilterInjured(!!c)} />
-          <Filter className="h-4 w-4" />
-          Injured only
-        </label>
-      </div>
-
-      {/* Upgrade Tickets */}
+      {/* Upgrade Tickets — an actionable resource, styled like "Needs Attention" rather than a passive info card */}
       {upgradeTickets.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Ticket className="h-4 w-4" /> Upgrade Tickets
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-3">
-              Apply a ticket to a player to boost their rating. Bronze +1, Silver +2, Gold +3, Platinum +4 OVR.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {upgradeTickets.map((t) => (
-                <Button
-                  key={t.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTicketDialog({ ticket: t })}
-                >
-                  {(t.tier ?? "bronze").charAt(0).toUpperCase() + (t.tier ?? "bronze").slice(1)} (+{TIER_BOOST[t.tier ?? "bronze"] ?? 1})
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="relative overflow-hidden rounded-lg border border-accent/30 bg-surface p-4 glow-blue">
+          <p className="relative text-sm font-semibold flex items-center gap-2 mb-1">
+            <Ticket className="h-4 w-4 text-accent" /> {upgradeTickets.length} Upgrade Ticket{upgradeTickets.length !== 1 ? "s" : ""} Available
+          </p>
+          <p className="relative text-xs text-muted-foreground mb-3">
+            Use one on a player you ended last season with and still own. Bronze +1, Silver +2, Gold +3, Platinum +4 OVR. Tickets can also be sold in the Auction House.
+          </p>
+          <div className="relative flex flex-wrap gap-2">
+            {upgradeTickets.map((t) => (
+              <Button
+                key={t.id}
+                variant="outline"
+                size="sm"
+                className="bg-surface-2 hover:bg-surface-3 hover:border-accent/50"
+                onClick={() => setTicketDialog({ ticket: t })}
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1.5 text-accent" />
+                {(t.tier ?? "bronze").charAt(0).toUpperCase() + (t.tier ?? "bronze").slice(1)} (+{TIER_BOOST[t.tier ?? "bronze"] ?? 1})
+              </Button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Use Upgrade Ticket Dialog */}
       <Dialog open={!!ticketDialog} onOpenChange={(open) => !open && setTicketDialog(null)}>
-        <DialogContent>
+        <DialogContent className="bg-surface border-border">
           <DialogHeader>
             <DialogTitle>Apply Upgrade Ticket</DialogTitle>
           </DialogHeader>
           {ticketDialog && (
             <>
               <p className="text-sm text-muted-foreground">
-                Select a player to receive +{TIER_BOOST[ticketDialog.ticket.tier ?? "bronze"] ?? 1} OVR.
+                {ticketRule(ticketDialog.ticket.tier).description}
               </p>
               <ScrollArea className="max-h-[300px]">
                 <div className="space-y-2 py-2">
-                  {sortPlayersByRating(teamData?.squad ?? []).map((p) => (
-                    <div
+                  {eligibleTicketPlayers(sortPlayersByRating(teamData?.squad ?? []), ticketDialog.ticket.eligible_player_ids).map((p: Player) => (
+                    <button
+                      type="button"
                       key={p.player_id}
-                      className="flex items-center justify-between p-2 rounded hover:bg-secondary cursor-pointer"
+                      className="flex w-full items-center justify-between p-2 rounded-lg hover:bg-surface-3 cursor-pointer transition-colors duration-150 text-left"
                       onClick={() => {
                         if (applyingTicket) return;
                         setApplyingTicket(true);
@@ -429,22 +419,25 @@ function SquadPageContent() {
                               setTicketDialog(null);
                               fetchTeamData();
                             } else {
-                              alert(json.error ?? "Failed to apply ticket");
+                              toast.error(json.error ?? "Failed to apply ticket");
                             }
                           })
                           .finally(() => setApplyingTicket(false));
                       }}
                     >
                       <div className="flex items-center gap-2">
-                        <PlayerImage src={p.image} alt={p.name} width={32} height={32} className="rounded" />
+                        <PlayerImage src={p.image} alt={p.name} width={32} height={32} className="rounded-lg ring-1 ring-border object-cover" />
                         <div>
                           <p className="font-medium text-sm">{formatPlayerName(p.name)}</p>
                           <p className="text-xs text-muted-foreground">{p.positions} • {p.overall_rating} OVR</p>
                         </div>
                       </div>
                       <Badge className={getRatingColorClasses(p.overall_rating)}>{p.overall_rating}</Badge>
-                    </div>
+                    </button>
                   ))}
+                  {eligibleTicketPlayers(teamData?.squad ?? [], ticketDialog.ticket.eligible_player_ids).length === 0 && (
+                    <p className="p-4 text-center text-sm text-muted-foreground">No eligible players remain from your previous-season roster.</p>
+                  )}
                 </div>
               </ScrollArea>
               <DialogFooter>
@@ -459,7 +452,7 @@ function SquadPageContent() {
 
       {/* Squad List */}
       <Tabs defaultValue="all" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto">
           <TabsTrigger value="all">All Players</TabsTrigger>
           <TabsTrigger value="goalkeepers">Goalkeepers</TabsTrigger>
           <TabsTrigger value="defenders">Defenders</TabsTrigger>
@@ -512,12 +505,18 @@ const toPlayerIds = (arr: unknown): string[] => {
   return arr.map((item) => (typeof item === "string" ? item : (item as { player_id?: string })?.player_id)).filter(Boolean) as string[];
 };
 
-// Get squad tier (S1=starting, S2=bench, S3=reserves, S4=other)
-const getSquadTier = (playerId: string, starting: string[], bench: string[], reserves: string[]): string => {
-  if (starting?.includes(playerId)) return "S1";
-  if (bench?.includes(playerId)) return "S2";
-  if (reserves?.includes(playerId)) return "S3";
-  return "S4";
+// Squad role: readable label + color, not the cryptic S1-S4 codes this used to show
+const SQUAD_ROLE_STYLES: Record<string, string> = {
+  Starting: "bg-accent-muted text-accent",
+  Bench: "bg-surface-3 text-foreground",
+  Reserve: "bg-surface-3 text-muted-foreground",
+  Unregistered: "bg-status-negative/10 text-status-negative",
+};
+const getSquadRole = (playerId: string, starting: string[], bench: string[], reserves: string[]): string => {
+  if (starting?.includes(playerId)) return "Starting";
+  if (bench?.includes(playerId)) return "Bench";
+  if (reserves?.includes(playerId)) return "Reserve";
+  return "Unregistered";
 };
 
 // Squad List - list view with wages, position, status, potential, nationality, picture, CompIndex
@@ -550,40 +549,35 @@ function SquadList({ players, allPlayers, teamId, leagueId, startingLineup, benc
   }
 
   return (
-    <Card>
+    <Card className="bg-surface border-border">
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Squad</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Player</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Pos</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">OVR</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Wage</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Potential</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Nationality</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">CompIndex</th>
+                <th className="text-left py-3 px-4 text-[11px] uppercase tracking-wider font-medium text-muted-foreground">Player</th>
+                <th className="text-left py-3 px-4 text-[11px] uppercase tracking-wider font-medium text-muted-foreground">Pos</th>
+                <th className="text-left py-3 px-4 text-[11px] uppercase tracking-wider font-medium text-muted-foreground">OVR</th>
+                <th className="text-left py-3 px-4 text-[11px] uppercase tracking-wider font-medium text-muted-foreground">Role</th>
+                <th className="text-left py-3 px-4 text-[11px] uppercase tracking-wider font-medium text-muted-foreground">Wage</th>
+                <th className="text-left py-3 px-4 text-[11px] uppercase tracking-wider font-medium text-muted-foreground">Status</th>
+                <th className="text-left py-3 px-4 text-[11px] uppercase tracking-wider font-medium text-muted-foreground">Potential</th>
               </tr>
             </thead>
             <tbody>
               {players.map((player) => {
-                const playerUrl = `/main/dashboard/squad/player/${player.player_id}?teamId=${teamId}${leagueId ? `&league=${leagueId}` : ""}`;
+                const playerUrl = `/main/dashboard/players/${player.player_id}${leagueId ? `?league=${leagueId}` : ""}`;
                 const ratingColorClasses = getRatingColorClasses(player.overall_rating);
                 const isWonderkid = player.is_youngster;
                 const inTop14 = top14Ids.has(player.player_id);
-                const squadTier = getSquadTier(player.player_id, startingLineup || [], bench || [], reserves || []);
+                const squadRole = getSquadRole(player.player_id, startingLineup || [], bench || [], reserves || []);
 
                 return (
                   <tr
                     key={player.player_id}
-                    className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors"
+                    className="border-b border-border/50 hover:bg-surface-3/60 cursor-pointer transition-colors duration-150"
                     onClick={() => router.push(playerUrl)}
                   >
-                    <td className="py-3 px-4">
-                      <Badge variant="outline" className="text-xs font-mono">{squadTier}</Badge>
-                    </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         <div className="relative shrink-0">
@@ -592,34 +586,41 @@ function SquadList({ players, allPlayers, teamId, leagueId, startingLineup, benc
                             alt={player.name}
                             width={40}
                             height={40}
-                            className="rounded object-cover"
+                            className={cn(
+                              "rounded-lg object-cover ring-1",
+                              inTop14 ? "ring-accent" : "ring-border"
+                            )}
                           />
                           {player.isInjured && (
-                            <Badge variant="destructive" className="absolute -top-1 -right-1 text-[10px] px-1">
+                            <Badge variant="destructive" className="absolute -top-1.5 -right-1.5 text-[10px] px-1 leading-none">
                               INJ
                             </Badge>
                           )}
                         </div>
-                        <span className="font-medium truncate max-w-[140px]">{formatPlayerName(player.name)}</span>
+                        <div className="min-w-0">
+                          <span className="font-medium truncate block max-w-[160px]">{formatPlayerName(player.name)}</span>
+                          {player.country_name && (
+                            <span className="text-xs text-muted-foreground truncate block max-w-[160px]">{player.country_name}</span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="py-3 px-4 text-sm text-muted-foreground">{player.positions?.split(",")[0]?.trim() || "—"}</td>
                     <td className="py-3 px-4">
-                      <Badge className={ratingColorClasses}>{player.overall_rating}</Badge>
+                      <Badge className={ratingColorClasses} title={inTop14 ? "Top 14 by rating" : undefined}>
+                        {player.overall_rating}
+                      </Badge>
                     </td>
-                    <td className="py-3 px-4 text-sm">{formatWage(player.wage)}</td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${SQUAD_ROLE_STYLES[squadRole]}`}>
+                        {squadRole}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-sm tabular-nums">{formatWage(player.wage)}</td>
                     <td className="py-3 px-4 text-sm text-muted-foreground">{getStatusLabel(player)}</td>
                     <td className="py-3 px-4 text-sm">
                       {isWonderkid && player.potential != null ? (
-                        <span className="text-amber-500 font-medium">{player.potential}</span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-muted-foreground">{player.country_name || "—"}</td>
-                    <td className="py-3 px-4">
-                      {inTop14 ? (
-                        <Badge variant="secondary" className="text-xs">Top 14</Badge>
+                        <span className="text-status-warning font-medium tabular-nums">{player.potential}</span>
                       ) : (
                         "—"
                       )}

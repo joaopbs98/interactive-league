@@ -30,7 +30,7 @@ function LoginPageContent() {
         <div className="relative z-10">
           <Image src={Images.logo} height={28} width={186} alt="Logo Image" />
         </div>
-        <div className="relative z-10 p-4 mt-4 bg-neutral-800/20 backdrop-blur-md text-white rounded-md w-full self-center gap-2">
+        <div className="relative z-10 p-4 mt-4 bg-surface/40 backdrop-blur-md text-foreground rounded-md w-full self-center gap-2">
           <p className="text-lg font-light">
             &ldquo;Under normal conditions, we will be champions, under abnormal
             conditions we will also be champions.&rdquo;
@@ -40,23 +40,23 @@ function LoginPageContent() {
       </section>
 
       {/* RIGHT SIDE */}
-      <section className="flex flex-col gap-10 w-full h-screen items-center justify-center bg-neutral-950 text-white px-4">
+      <section className="flex flex-col gap-10 w-full h-screen items-center justify-center bg-background text-foreground px-4">
         <div className="relative z-10 mb-6">
           <Image src={Images.logo} height={28} width={186} alt="Logo Image" />
         </div>
 
         <div className="w-full max-w-md">
           <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-neutral-900">
-              <TabsTrigger value="login" className="data-[state=active]:bg-neutral-800">Login</TabsTrigger>
-              <TabsTrigger value="signup" className="data-[state=active]:bg-neutral-800">Sign Up</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 bg-surface">
+              <TabsTrigger value="login" className="data-[state=active]:bg-surface-3">Login</TabsTrigger>
+              <TabsTrigger value="signup" className="data-[state=active]:bg-surface-3">Sign Up</TabsTrigger>
             </TabsList>
             
             <TabsContent value="login" className="mt-6">
-              <Card className="bg-neutral-900 border-neutral-800">
+              <Card className="bg-surface border-border">
                 <CardHeader>
-                  <CardTitle className="text-white">Welcome back</CardTitle>
-                  <CardDescription className="text-neutral-400">
+                  <CardTitle className="text-foreground">Welcome back</CardTitle>
+                  <CardDescription className="text-muted-foreground">
                     Sign in to your account to continue
                   </CardDescription>
                 </CardHeader>
@@ -74,7 +74,7 @@ function LoginPageContent() {
                   
                   <form action={loginFormAction} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="email" className="text-white">Email</Label>
+                      <Label htmlFor="email" className="text-foreground">Email</Label>
                       <Input
                         id="email"
                         name="email"
@@ -82,21 +82,21 @@ function LoginPageContent() {
                         autoComplete="email"
                         placeholder="Enter your email"
                         required
-                        className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+                        className="bg-surface-2 border-border text-foreground placeholder:text-muted-foreground"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="password" className="text-white">Password</Label>
+                      <Label htmlFor="password" className="text-foreground">Password</Label>
                       <Input
                         id="password"
                         name="password"
                         type="password"
                         placeholder="Enter your password"
                         required
-                        className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+                        className="bg-surface-2 border-border text-foreground placeholder:text-muted-foreground"
                       />
                     </div>
-                    <Button type="submit" disabled={loginPending} className="w-full bg-blue-600 hover:bg-blue-700">
+                    <Button type="submit" disabled={loginPending} className="w-full bg-accent hover:bg-accent-hover">
                       {loginPending ? "Signing in..." : "Sign In"}
                     </Button>
                   </form>
@@ -105,10 +105,10 @@ function LoginPageContent() {
             </TabsContent>
             
             <TabsContent value="signup" className="mt-6">
-              <Card className="bg-neutral-900 border-neutral-800">
+              <Card className="bg-surface border-border">
                 <CardHeader>
-                  <CardTitle className="text-white">Create account</CardTitle>
-                  <CardDescription className="text-neutral-400">
+                  <CardTitle className="text-foreground">Create account</CardTitle>
+                  <CardDescription className="text-muted-foreground">
                     Sign up to get started with your account
                   </CardDescription>
                 </CardHeader>
@@ -119,9 +119,9 @@ function LoginPageContent() {
                     </Alert>
                   )}
                   {signupState.success && (
-                    <Alert className="border-green-600 bg-green-950/50">
-                      <AlertDescription className="text-green-300 flex flex-col gap-1">
-                        <span className="font-semibold text-green-200">Account created!</span>
+                    <Alert className="border-status-positive/40 bg-status-positive/10">
+                      <AlertDescription className="text-status-positive flex flex-col gap-1">
+                        <span className="font-semibold text-status-positive">Account created!</span>
                         <span>A confirmation email has been sent to your inbox. Please check your email (and spam folder) and click the link to activate your account before logging in.</span>
                       </AlertDescription>
                     </Alert>
@@ -129,7 +129,7 @@ function LoginPageContent() {
                   
                   <form action={signupFormAction} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="signup-username" className="text-white">Username</Label>
+                      <Label htmlFor="signup-username" className="text-foreground">Username</Label>
                       <Input
                         id="signup-username"
                         name="username"
@@ -137,22 +137,22 @@ function LoginPageContent() {
                         autoComplete="username"
                         placeholder="Choose a username"
                         required
-                        className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+                        className="bg-surface-2 border-border text-foreground placeholder:text-muted-foreground"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="signup-email" className="text-white">Email</Label>
+                      <Label htmlFor="signup-email" className="text-foreground">Email</Label>
                       <Input
                         id="signup-email"
                         name="email"
                         type="email"
                         placeholder="Enter your email"
                         required
-                        className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+                        className="bg-surface-2 border-border text-foreground placeholder:text-muted-foreground"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="signup-password" className="text-white">Password</Label>
+                      <Label htmlFor="signup-password" className="text-foreground">Password</Label>
                       <Input
                         id="signup-password"
                         name="password"
@@ -160,10 +160,10 @@ function LoginPageContent() {
                         autoComplete="new-password"
                         placeholder="Create a password"
                         required
-                        className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-400"
+                        className="bg-surface-2 border-border text-foreground placeholder:text-muted-foreground"
                       />
                     </div>
-                    <Button type="submit" disabled={signupPending} className="w-full bg-blue-600 hover:bg-blue-700">
+                    <Button type="submit" disabled={signupPending} className="w-full bg-accent hover:bg-accent-hover">
                       {signupPending ? "Creating account..." : "Create Account"}
                     </Button>
                   </form>

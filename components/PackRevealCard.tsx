@@ -1,8 +1,11 @@
 "use client";
 
-import React from "react";
-import { Images } from "@/lib/assets";
-import { getStatColor } from "@/hooks/getStatColor";
+import React, { useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Eye, ArrowLeftRight, Trash2, Loader2, Shield } from "lucide-react";
+import { PlayerCard } from "@/components/PlayerCard";
 
 interface PackRevealCardProps {
   player: {
@@ -13,104 +16,214 @@ interface PackRevealCardProps {
     overall_rating: number;
     image?: string;
     country_name?: string;
+    country_flag?: string;
   };
-  /** Stagger animation delay (ms) */
+  /** "flip" = back/front 3D flip card used during sequential reveal. "static" = front-only, used in summary grid. */
+  mode?: "flip" | "static";
+  /** Only relevant in "flip" mode - whether the card is currently showing its front face. */
+  flipped?: boolean;
+  /** Stagger animation delay (ms), used in static mode. */
   revealDelay?: number;
   className?: string;
+  /** When provided (with leagueId), renders the View / Transfer List / Discard action row in static mode. */
+  teamId?: string;
+  leagueId?: string;
 }
 
-/** FUT-style collectible trading card for pack reveal - clean, minimal, no action clutter */
-export function PackRevealCard({ player, revealDelay = 0, className = "" }: PackRevealCardProps) {
+export function PackRevealCard({
+  player,
+  mode = "static",
+  flipped = true,
+  revealDelay = 0,
+  className = "",
+  teamId,
+  leagueId,
+}: PackRevealCardProps) {
   const displayName = player.full_name || player.name;
   const rating = player.overall_rating ?? 0;
-  const ratingColor = getStatColor(rating);
 
-  const imageSrc = player.image?.startsWith("http")
-    ? `/api/proxy-image?url=${encodeURIComponent(player.image)}`
-    : player.image || Images.NoImage.src;
+  const isElite = rating >= 85;
+  const isLegendary = rating >= 90;
+  const glowColor = isLegendary
+    ? "rgba(250,204,21,0.55)"
+    : isElite
+      ? "rgba(99,102,241,0.5)"
+      : "transparent";
 
-  // Rarity tier: Gold 75+, Silver 65-74, Bronze <65
-  const tier =
-    rating >= 75 ? "gold" : rating >= 65 ? "silver" : "bronze";
+  const [actionState, setActionState] = useState<"idle" | "transferred" | "discarded">("idle");
+  const [actionLoading, setActionLoading] = useState<"transfer" | "discard" | null>(null);
 
-  const tierStyles = {
-    gold: {
-      bg: "bg-gradient-to-br from-amber-900/90 via-amber-800/95 to-amber-950",
-      border: "border-amber-500/60",
-      accent: "from-amber-600/40 to-transparent",
-    },
-    silver: {
-      bg: "bg-gradient-to-br from-zinc-700/95 via-zinc-600/95 to-zinc-800",
-      border: "border-zinc-400/50",
-      accent: "from-zinc-500/30 to-transparent",
-    },
-    bronze: {
-      bg: "bg-gradient-to-br from-amber-950/95 via-amber-900/95 to-amber-950",
-      border: "border-amber-700/50",
-      accent: "from-amber-800/40 to-transparent",
-    },
+  const handleTransferList = async () => {
+    if (!teamId) return;
+    setActionLoading("transfer");
+    try {
+      const res = await fetch(`/api/team/${teamId}/player/transfer-list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: player.player_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success("Player added to transfer list");
+      setActionState("transferred");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to transfer list player");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const style = tierStyles[tier];
+  const handleDiscard = async () => {
+    if (!teamId) return;
+    setActionLoading("discard");
+    try {
+      const res = await fetch(`/api/team/${teamId}/player/discard`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: player.player_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      toast.success(data.message || "Player discarded");
+      setActionState("discarded");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to discard player");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const cardFace = (
+    <div
+      className={`relative h-full w-full flex items-center justify-center ${isLegendary ? "shimmer-sweep" : ""}`}
+      style={{ "--pack-glow-color": glowColor } as React.CSSProperties}
+    >
+      <PlayerCard player={player} size="lg" className="w-full" />
+    </div>
+  );
+
+  const cardBack = (
+    <div className="relative overflow-hidden rounded-xl border-2 border-[var(--border-strong)] bg-gradient-to-br from-[var(--surface-2)] via-[var(--surface)] to-[var(--surface-3)] aspect-square min-h-[200px] flex flex-col items-center justify-center h-full w-full shimmer-sweep">
+      <div className="flex items-center justify-center w-20 h-20 rounded-full bg-[var(--accent-muted)] border border-[var(--accent)]/40">
+        <Shield className="w-10 h-10 text-[var(--accent)]" />
+      </div>
+      <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+        Interactive League
+      </p>
+    </div>
+  );
+
+  if (mode === "flip") {
+    return (
+      <div className={`relative ${className}`} style={{ perspective: "1400px" }}>
+        <div
+          className="relative w-full h-full transition-transform duration-700 ease-out"
+          style={{
+            transformStyle: "preserve-3d",
+            transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
+          }}
+        >
+          <div className="absolute inset-0" style={{ backfaceVisibility: "hidden" }}>
+            {cardBack}
+          </div>
+          <div
+            className="absolute inset-0"
+            style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
+          >
+            {/* outer glow ring for high-rated pulls */}
+            {isElite && (
+              <div
+                className="absolute -inset-1.5 rounded-2xl pack-glow-pulse pointer-events-none"
+                style={{ "--pack-glow-color": glowColor } as React.CSSProperties}
+              />
+            )}
+            {cardFace}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const showActions = !!(teamId && leagueId);
 
   return (
     <div
-      className={`
-        relative overflow-hidden rounded-xl border-2 ${style.border} ${style.bg}
-        shadow-[0_8px_32px_rgba(0,0,0,0.4)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.5)]
-        transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5
-        aspect-[3/4] min-h-[200px] flex flex-col
-        ${className}
-      `}
+      className={`flex flex-col gap-2 ${className}`}
       style={{
         animation: revealDelay > 0 ? `fadeInUp 0.4s ease-out ${revealDelay}ms both` : undefined,
       }}
     >
-      {/* Top accent bar */}
-      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${style.accent}`} />
-
-      {/* Rating badge - top right corner */}
-      <div className="absolute top-3 right-3 z-10">
-        <div
-          className={`flex flex-col items-center justify-center w-12 h-12 rounded-lg ${ratingColor} shadow-lg`}
-        >
-          <span className="text-lg font-black leading-none">{rating}</span>
-          <span className="text-[8px] font-bold uppercase tracking-wider opacity-90">OVR</span>
-        </div>
-      </div>
-
-      {/* Player image - centered, prominent */}
-      <div className="flex-1 flex items-center justify-center p-4 pt-6">
-        <div className="relative w-24 h-24 rounded-full overflow-hidden ring-2 ring-white/20 shadow-xl">
-          <img
-            src={imageSrc}
-            alt={displayName}
-            width={96}
-            height={96}
-            className="object-cover w-full h-full bg-muted"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = Images.NoImage.src;
-            }}
+      <div className="relative">
+        {isElite && (
+          <div
+            className="absolute -inset-1.5 rounded-2xl pack-glow-pulse pointer-events-none"
+            style={{ "--pack-glow-color": glowColor } as React.CSSProperties}
           />
-        </div>
+        )}
+        <div className="relative">{cardFace}</div>
       </div>
 
-      {/* Bottom info strip */}
-      <div className="p-3 pt-2 bg-black/30 backdrop-blur-sm">
-        <p className="font-bold text-white text-sm truncate text-center">
-          {displayName}
-        </p>
-        <div className="flex items-center justify-center gap-2 mt-1">
-          <span className="text-xs font-medium text-white/90 bg-white/10 px-2 py-0.5 rounded">
-            {player.positions}
-          </span>
-          {player.country_name && (
-            <span className="text-xs text-white/70 truncate max-w-[80px]">
-              {player.country_name}
+      <div className="text-center">
+        <p className="font-bold text-sm uppercase tracking-wide truncate">{displayName}</p>
+        {player.country_name && (
+          <p className="text-xs text-muted-foreground truncate">{player.country_name}</p>
+        )}
+      </div>
+
+      {showActions && (
+        <div className="flex items-center gap-1.5">
+          <Link href={`/main/dashboard/players/${player.player_id}?league=${leagueId}`} className="flex-1">
+            <Button size="sm" variant="outline" className="w-full">
+              <Eye className="h-3.5 w-3.5 mr-1" /> View
+            </Button>
+          </Link>
+
+          {actionState === "idle" && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                disabled={actionLoading !== null}
+                onClick={handleTransferList}
+              >
+                {actionLoading === "transfer" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ArrowLeftRight className="h-3.5 w-3.5 mr-1" />
+                )}
+                List
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 text-status-negative hover:text-status-negative"
+                disabled={actionLoading !== null}
+                onClick={handleDiscard}
+              >
+                {actionLoading === "discard" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                )}
+                Discard
+              </Button>
+            </>
+          )}
+
+          {actionState === "transferred" && (
+            <span className="flex-[2] text-center text-xs font-medium rounded-md py-1.5 bg-[var(--accent-muted)] text-[var(--accent)] border border-[var(--accent)]/30">
+              Transfer Listed
+            </span>
+          )}
+
+          {actionState === "discarded" && (
+            <span className="flex-[2] text-center text-xs font-medium rounded-md py-1.5 bg-status-negative/10 text-status-negative border border-status-negative/30">
+              Discarded
             </span>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

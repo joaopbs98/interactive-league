@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,17 +16,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLeague } from "@/contexts/LeagueContext";
-import { getRatingColorClasses } from "@/utils/ratingColors";
-import { Images } from "@/lib/assets";
+import { PlayerCard } from "@/components/PlayerCard";
 import {
   Search,
   ChevronDown,
   ChevronUp,
   Filter,
   Loader2,
-  ArrowRightLeft,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
-import { Toaster, toast } from "sonner";
+import { Toaster } from "sonner";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { PageHeader } from "@/components/PageHeader";
 
 const POSITIONS = [
   "GK",
@@ -59,18 +62,34 @@ type LeaguePlayer = {
   wage?: number;
   age?: number;
   overall_rating?: number;
+  country_name?: string | null;
+  country_flag?: string | null;
 };
 
 type Team = { id: string; name: string };
 
+const PAGE_SIZE = 24;
+
+function formatValue(value: number): string {
+  if (value >= 1_000_000) return `€${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1000) return `€${(value / 1000).toFixed(0)}K`;
+  return `€${value}`;
+}
+
+function formatWage(wage: number): string {
+  if (wage >= 1000) return `€${(wage / 1000).toFixed(0)}K/wk`;
+  return `€${wage}/wk`;
+}
+
 export default function PlayersDatabasePage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const { selectedLeagueId, selectedTeam } = useLeague();
+  const { selectedLeagueId } = useLeague();
   const leagueId = searchParams.get("league") || selectedLeagueId;
 
   const [players, setPlayers] = useState<LeaguePlayer[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +110,8 @@ export default function PlayersDatabasePage() {
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
 
+  const isFreeAgentsView = teamId === "free";
+
   const fetchPlayers = useCallback(async () => {
     if (!leagueId) {
       setError("No league selected");
@@ -102,6 +123,8 @@ export default function PlayersDatabasePage() {
     try {
       const params = new URLSearchParams();
       params.set("leagueId", leagueId);
+      params.set("page", String(page));
+      params.set("pageSize", String(PAGE_SIZE));
       if (search) params.set("search", search);
       if (position) params.set("position", position);
       if (teamId) params.set("teamId", teamId);
@@ -120,14 +143,17 @@ export default function PlayersDatabasePage() {
       if (!res.ok) throw new Error(data.error || "Failed to fetch");
       setPlayers(data.data || []);
       setTeams(data.teams || []);
+      setTotal(data.total ?? (data.data || []).length);
     } catch (err: any) {
       setError(err.message);
       setPlayers([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
   }, [
     leagueId,
+    page,
     search,
     position,
     teamId,
@@ -146,19 +172,23 @@ export default function PlayersDatabasePage() {
     fetchPlayers();
   }, [fetchPlayers]);
 
-  const handleProposeTrade = (player: LeaguePlayer) => {
-    if (!player.team_id || player.team_id === selectedTeam?.id) {
-      toast.error(
-        player.team_id
-          ? "You cannot trade with your own team"
-          : "Free agents cannot be traded"
-      );
-      return;
-    }
-    router.push(
-      `/main/dashboard/trades?league=${leagueId}&proposeTo=${player.team_id}&requestPlayer=${player.player_id}`
-    );
-  };
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    setPage(1);
+  }, [
+    search,
+    position,
+    teamId,
+    ratingMin,
+    ratingMax,
+    positionsMulti,
+    valueMin,
+    valueMax,
+    wageMin,
+    wageMax,
+    ageMin,
+    ageMax,
+  ]);
 
   const togglePosition = (pos: string) => {
     setPositionsMulti((prev) =>
@@ -181,24 +211,28 @@ export default function PlayersDatabasePage() {
     setAgeMax("");
   };
 
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
   if (!leagueId) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="p-6 max-w-[1400px] mx-auto">
         <p className="text-muted-foreground">Select a league to view the players database.</p>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 flex flex-col gap-6 max-w-[1400px] mx-auto">
       <Toaster position="top-center" richColors />
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Players Database</h1>
-        <Badge variant="secondary">{players.length} players</Badge>
-      </div>
+      <Breadcrumbs />
+      <PageHeader
+        eyebrow="Transfer Hub"
+        title="Players Database"
+        stats={[{ label: "Players", value: total.toLocaleString(), emphasis: true }]}
+      />
 
       {/* Filters */}
-      <Card>
+      <Card className="bg-surface border-border">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Filter className="h-4 w-4" />
@@ -292,7 +326,7 @@ export default function PlayersDatabasePage() {
               Advanced filters
             </Button>
             {advancedOpen && (
-              <div className="pt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border-t mt-2">
+              <div className="pt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-border mt-2">
                 <div>
                   <Label className="text-xs">Positions (multi)</Label>
                   <div className="flex flex-wrap gap-1 mt-1">
@@ -316,12 +350,14 @@ export default function PlayersDatabasePage() {
                       placeholder="Min"
                       value={valueMin}
                       onChange={(e) => setValueMin(e.target.value)}
+                      disabled={isFreeAgentsView}
                     />
                     <Input
                       type="number"
                       placeholder="Max"
                       value={valueMax}
                       onChange={(e) => setValueMax(e.target.value)}
+                      disabled={isFreeAgentsView}
                     />
                   </div>
                 </div>
@@ -333,12 +369,14 @@ export default function PlayersDatabasePage() {
                       placeholder="Min"
                       value={wageMin}
                       onChange={(e) => setWageMin(e.target.value)}
+                      disabled={isFreeAgentsView}
                     />
                     <Input
                       type="number"
                       placeholder="Max"
                       value={wageMax}
                       onChange={(e) => setWageMax(e.target.value)}
+                      disabled={isFreeAgentsView}
                     />
                   </div>
                 </div>
@@ -352,6 +390,7 @@ export default function PlayersDatabasePage() {
                       onChange={(e) => setAgeMin(e.target.value)}
                       min={16}
                       max={50}
+                      disabled
                     />
                     <Input
                       type="number"
@@ -360,9 +399,15 @@ export default function PlayersDatabasePage() {
                       onChange={(e) => setAgeMax(e.target.value)}
                       min={16}
                       max={50}
+                      disabled
                     />
                   </div>
                 </div>
+                <p className="text-xs text-muted-foreground md:col-span-2 lg:col-span-4">
+                  {isFreeAgentsView
+                    ? "Value/wage/age filters aren't available for the unrostered Free Agents pool."
+                    : "Age filtering isn't available yet."}
+                </p>
               </div>
             )}
           </div>
@@ -375,86 +420,85 @@ export default function PlayersDatabasePage() {
           <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
         </div>
       ) : error ? (
-        <Card>
+        <Card className="bg-surface border-border">
           <CardContent className="p-8 text-center text-destructive">
             {error}
           </CardContent>
         </Card>
       ) : players.length === 0 ? (
-        <Card>
+        <Card className="bg-surface border-border">
           <CardContent className="p-8 text-center text-muted-foreground">
             No players match your filters.
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {players.map((player) => (
-            <Card
-              key={player.id}
-              className="hover:shadow-lg transition-shadow overflow-hidden"
-            >
-              <CardContent className="p-4">
-                <div className="flex gap-3">
-                  <div className="shrink-0">
-                    <img
-                      src={
-                        player.image?.startsWith("http")
-                          ? `/api/proxy-image?url=${encodeURIComponent(player.image)}`
-                          : player.image || Images.NoImage.src
-                      }
-                      alt={player.full_name || player.player_name}
-                      className="w-14 h-14 rounded-lg object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = Images.NoImage.src;
-                      }}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground truncate">
-                      {player.full_name || player.player_name}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+            {players.map((player) => (
+              <Link
+                key={player.id}
+                href={`/main/dashboard/players/${player.player_id}?league=${leagueId}`}
+                className="group flex flex-col gap-2"
+              >
+                <PlayerCard
+                  player={{
+                    name: player.player_name,
+                    full_name: player.full_name || player.player_name,
+                    positions: player.positions,
+                    overall_rating: player.overall_rating ?? player.rating,
+                    image: player.image || undefined,
+                    country_name: player.country_name,
+                    country_flag: player.country_flag,
+                  }}
+                  size="lg"
+                  className="w-full transition-transform group-hover:scale-[1.03]"
+                />
+                <div className="text-center">
+                  <p className="font-semibold text-sm truncate">
+                    {player.full_name || player.player_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {player.team_name || "Free Agent"}
+                  </p>
+                  {(player.value != null || player.wage != null) && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {player.value != null && formatValue(player.value)}
+                      {player.value != null && player.wage != null && " • "}
+                      {player.wage != null && formatWage(player.wage)}
                     </p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      <Badge variant="outline" className="text-xs">
-                        {player.positions?.split(",")[0] || "-"}
-                      </Badge>
-                      <Badge
-                        className={`text-xs ${getRatingColorClasses(
-                          player.overall_rating ?? player.rating
-                        )}`}
-                      >
-                        {player.overall_rating ?? player.rating}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {player.team_name || "Free Agent"}
-                    </p>
-                    {(player.value != null || player.wage != null) && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {player.value != null &&
-                          `€${(player.value / 1_000_000).toFixed(1)}M`}
-                        {player.value != null && player.wage != null && " • "}
-                        {player.wage != null &&
-                          `€${(player.wage / 1000).toFixed(0)}K/wk`}
-                      </p>
-                    )}
-                    {player.team_id &&
-                      player.team_id !== selectedTeam?.id && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-2 w-full gap-1"
-                          onClick={() => handleProposeTrade(player)}
-                        >
-                          <ArrowRightLeft className="h-3 w-3" />
-                          Propose Trade
-                        </Button>
-                      )}
-                  </div>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Page {page} of {totalPages} · {total.toLocaleString()} players
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

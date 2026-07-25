@@ -4,13 +4,13 @@ import React, { useEffect, useState } from "react";
 import { useLeague } from "@/contexts/LeagueContext";
 import { useRefresh } from "@/contexts/RefreshContext";
 import { useLeagueSettings } from "@/contexts/LeagueSettingsContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Images } from "@/lib/assets";
-import { Loader2, ShoppingCart, Trash2 } from "lucide-react";
+import { Loader2, ShoppingCart, Trash2, Store } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { toast, Toaster } from "sonner";
 
 type Listing = {
@@ -135,8 +135,8 @@ export default function TransferListPage() {
   if (!selectedLeagueId) {
     return (
       <div className="p-8">
-        <h1 className="text-2xl font-bold mb-4">Transfer List</h1>
-        <p className="text-muted-foreground">Select a league to view the transfer list.</p>
+        <PageHeader eyebrow="Transfer Hub" title="Transfer List" />
+        <p className="text-muted-foreground mt-4">Select a league to view the transfer list.</p>
       </div>
     );
   }
@@ -144,15 +144,15 @@ export default function TransferListPage() {
   if (!transferWindowOpen) {
     return (
       <div className="p-8">
-        <h1 className="text-2xl font-bold mb-4">Transfer List</h1>
-        <p className="text-muted-foreground">
+        <PageHeader eyebrow="Transfer Hub" title="Transfer List" />
+        <p className="text-muted-foreground mt-4">
           The transfer window is closed. Listings are only available during the off-season.
         </p>
       </div>
     );
   }
 
-  const PlayerCard = ({
+  const ListingRow = ({
     listing,
     onBuy,
     onRemove,
@@ -163,87 +163,85 @@ export default function TransferListPage() {
     onRemove?: () => void;
     isOwn: boolean;
   }) => (
-    <Card className="bg-neutral-900 border-neutral-800 overflow-hidden">
-      <CardContent className="p-0">
-        <div className="flex gap-4 p-4">
-          <img
-            src={imageSrc(listing.image)}
-            alt={listing.player_name}
-            className="w-16 h-16 rounded object-cover shrink-0"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = Images.NoImage.src;
-            }}
-          />
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold truncate">{listing.player_name}</p>
-            <div className="flex items-center gap-2 mt-0.5">
-              <Badge variant="secondary" className="text-xs">
-                {listing.positions}
-              </Badge>
-              <span className="text-sm text-muted-foreground">
-                {listing.club_position && listing.club_rating
-                  ? `${listing.rating} (${listing.club_rating} ${listing.club_position})`
-                  : `${listing.rating} OVR`}
-              </span>
-            </div>
-            {listing.looking_for && (
-              <p className="text-xs text-muted-foreground mt-0.5">Looking for: {listing.looking_for}</p>
-            )}
-            <p className="text-sm text-muted-foreground mt-1">
-              {listing.seller_team?.name || "Unknown"}
-              {listing.accepts_trades && (
-                <span className="ml-1 text-xs text-green-500">• Trades or cash</span>
-              )}
-            </p>
-          </div>
-          <div className="flex flex-col items-end justify-between shrink-0">
-            <p className="font-bold text-lg">{formatPrice(listing.asking_price)}</p>
-            {isOwn && onRemove && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={onRemove}
-                disabled={actionLoading === listing.id}
-              >
-                {actionLoading === listing.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Remove
-                  </>
-                )}
-              </Button>
-            )}
-            {!isOwn && onBuy && (
-              <Button
-                size="sm"
-                onClick={onBuy}
-                disabled={actionLoading === listing.id}
-              >
-                {actionLoading === listing.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <ShoppingCart className="h-4 w-4 mr-1" />
-                    Buy
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
+    <div className="flex gap-4 px-5 py-4 hover:bg-surface-2 transition-colors duration-150">
+      <img
+        src={imageSrc(listing.image)}
+        alt={listing.player_name}
+        className="w-16 h-16 rounded object-cover shrink-0"
+        onError={(e) => {
+          (e.target as HTMLImageElement).src = Images.NoImage.src;
+        }}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold truncate">{listing.player_name}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <Badge variant="secondary" className="text-xs">
+            {listing.positions}
+          </Badge>
+          <span className="text-sm text-muted-foreground">
+            {listing.club_position && listing.club_rating
+              ? `${listing.rating} (${listing.club_rating} ${listing.club_position})`
+              : `${listing.rating} OVR`}
+          </span>
         </div>
-      </CardContent>
-    </Card>
+        {listing.looking_for && (
+          <p className="text-xs text-muted-foreground mt-0.5">Looking for: {listing.looking_for}</p>
+        )}
+        <p className="text-sm text-muted-foreground mt-1">
+          {listing.seller_team?.name || "Unknown"}
+          {listing.accepts_trades && (
+            <span className="ml-1 text-xs text-status-positive">• Trades or cash</span>
+          )}
+        </p>
+      </div>
+      <div className="flex flex-col items-end justify-between shrink-0">
+        <p className="font-bold text-lg tabular-nums">{formatPrice(listing.asking_price)}</p>
+        {isOwn && onRemove && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onRemove}
+            disabled={actionLoading === listing.id}
+          >
+            {actionLoading === listing.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-1" />
+                Remove
+              </>
+            )}
+          </Button>
+        )}
+        {!isOwn && onBuy && (
+          <Button
+            size="sm"
+            onClick={onBuy}
+            disabled={actionLoading === listing.id}
+          >
+            {actionLoading === listing.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <ShoppingCart className="h-4 w-4 mr-1" />
+                Buy
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
       <Toaster position="top-center" richColors />
-      <h1 className="text-2xl font-bold">Transfer List</h1>
-      <p className="text-muted-foreground">
-        Buy and sell players with other teams in your league. List players from your Squad page.
-      </p>
+      <Breadcrumbs />
+      <PageHeader
+        eyebrow="Transfer Hub"
+        title="Transfer List"
+        subtitle="Buy and sell players with other teams in your league. List players from your Squad page."
+      />
 
       {loading ? (
         <div className="p-6">
@@ -252,49 +250,49 @@ export default function TransferListPage() {
       ) : (
         <>
           {myListings.length > 0 && (
-            <Card className="bg-neutral-900 border-neutral-800">
-              <CardHeader>
-                <CardTitle className="text-lg">My Listings</CardTitle>
-                <CardDescription>Players you have listed for sale</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+                <Store className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">My Listings</h2>
+              </div>
+              <div className="divide-y divide-border">
                 {myListings.map((l) => (
-                  <PlayerCard
+                  <ListingRow
                     key={l.id}
                     listing={l}
                     isOwn
                     onRemove={() => handleRemove(l)}
                   />
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           )}
 
-          <Card className="bg-neutral-900 border-neutral-800">
-            <CardHeader>
-              <CardTitle className="text-lg">Marketplace</CardTitle>
-              <CardDescription>Players listed by other teams</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {listings.length === 0 ? (
-                <div className="py-12 text-center">
-                  <p className="text-muted-foreground text-lg font-medium mb-2">No players listed.</p>
-                  <p className="text-sm text-muted-foreground">
-                    List players from your Squad when the transfer window is open.
-                  </p>
-                </div>
-              ) : (
-                listings.map((l) => (
-                  <PlayerCard
+          <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden" style={{ animationDelay: "40ms" }}>
+            <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Marketplace</h2>
+            </div>
+            {listings.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-muted-foreground text-lg font-medium mb-2">No players listed.</p>
+                <p className="text-sm text-muted-foreground">
+                  List players from your Squad when the transfer window is open.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {listings.map((l) => (
+                  <ListingRow
                     key={l.id}
                     listing={l}
                     isOwn={false}
                     onBuy={() => handleBuy(l)}
                   />
-                ))
-              )}
-            </CardContent>
-          </Card>
+                ))}
+              </div>
+            )}
+          </section>
         </>
       )}
     </div>

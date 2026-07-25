@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Loader2, Play, ArrowLeft, Check } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Toaster } from "sonner";
@@ -83,11 +85,15 @@ export default function InsertResultsPage() {
         const scheduleData = await scheduleRes.json();
 
         if (scheduleData.success && scheduleData.data) {
-          const matches = (scheduleData.data as MatchRow[]).filter(
-            (m) => m.match_status === "scheduled"
-          );
+          // Keep the whole round (not just unfilled matches) so completed ones stay visible
+          // as a checklist — previously this filtered to "scheduled" only, which meant a
+          // match vanished the instant its result was entered, with no completion feedback.
+          const matches = scheduleData.data as MatchRow[];
           setScheduledMatches(matches);
-          if (matches.length > 0) {
+          const stillOpen = matches.filter((m) => m.match_status === "scheduled");
+          if (stillOpen.length > 0) {
+            setSelMatchId((prev) => (stillOpen.some((m) => m.id === prev) ? prev : stillOpen[0].id));
+          } else if (matches.length > 0) {
             setSelMatchId((prev) => (matches.some((m) => m.id === prev) ? prev : matches[0].id));
           }
         }
@@ -145,11 +151,8 @@ export default function InsertResultsPage() {
         toast.success("Result saved");
         setHomeScore("");
         setAwayScore("");
+        // The refetch below re-selects the next still-open match automatically
         setRefreshKey((k) => k + 1);
-        const nextIdx = scheduledMatches.findIndex((m) => m.id === selMatchId) + 1;
-        if (nextIdx < scheduledMatches.length) {
-          setSelMatchId(scheduledMatches[nextIdx].id);
-        }
       } else {
         toast.error(data.error ?? "Failed to save");
       }
@@ -163,7 +166,7 @@ export default function InsertResultsPage() {
   if (!isHost) {
     return (
       <div className="p-8">
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardContent className="p-8 text-center">
             <p className="text-lg font-medium">Host Only</p>
             <p className="text-sm text-muted-foreground mt-2">
@@ -194,7 +197,7 @@ export default function InsertResultsPage() {
   if (league?.match_mode !== "MANUAL") {
     return (
       <div className="p-8">
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardContent className="p-8 text-center">
             <p className="text-lg font-medium">Manual Mode Only</p>
             <p className="text-sm text-muted-foreground mt-2">
@@ -219,24 +222,29 @@ export default function InsertResultsPage() {
     );
   }
 
+  const enteredCount = scheduledMatches.filter((m) => m.match_status !== "scheduled").length;
+
   return (
     <div className="p-8 flex flex-col gap-6">
       <Toaster position="top-center" richColors />
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Play className="h-7 w-7" /> Insert Match Results
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {roundLabel} · {league?.name || selectedTeam?.leagues?.name || "League"}
-          </p>
-        </div>
-        <Link href="/main/dashboard/host-controls">
-          <Button variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Host Controls
-          </Button>
-        </Link>
-      </div>
+      <Breadcrumbs />
+      <PageHeader
+        eyebrow="League"
+        title="Insert Match Results"
+        subtitle={`${roundLabel} · ${league?.name || selectedTeam?.leagues?.name || "League"}`}
+        stats={
+          scheduledMatches.length > 0
+            ? [{ label: "Entered", value: `${enteredCount}/${scheduledMatches.length}`, emphasis: true }]
+            : undefined
+        }
+        actions={
+          <Link href="/main/dashboard/host-controls">
+            <Button variant="outline">
+              <ArrowLeft className="h-4 w-4 mr-2" /> Host Controls
+            </Button>
+          </Link>
+        }
+      />
 
       <Tabs value={competitionType} onValueChange={(v) => setCompetitionType(v as CompetitionType)}>
         <TabsList className="mb-4">
@@ -249,7 +257,7 @@ export default function InsertResultsPage() {
         {(["domestic", "ucl", "uel", "uecl", "supercup"] as const).map((comp) => (
           <TabsContent key={comp} value={comp} className="mt-0">
             {scheduledMatches.length === 0 ? (
-              <Card className="bg-neutral-900 border-neutral-800">
+              <Card className="bg-surface border-border">
                 <CardContent className="p-8 text-center">
                   <p className="text-muted-foreground">
                     No scheduled matches in {comp === "domestic" ? "domestic" : comp === "supercup" ? "Super Cup" : comp.toUpperCase()} round {currentRound}. Generate schedule first or all results may be entered.
@@ -261,35 +269,51 @@ export default function InsertResultsPage() {
               </Card>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card className="bg-neutral-900 border-neutral-800 lg:col-span-1">
-                  <CardHeader>
-                    <CardTitle className="text-base">Matches</CardTitle>
-                    <CardDescription>{scheduledMatches.length} match(es) in this round</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {scheduledMatches.map((m) => (
+                <div className="rounded-lg border border-border-strong bg-surface overflow-hidden lg:col-span-1">
+                  <div className="px-5 pt-4 pb-1">
+                    <h2 className="font-display text-xl">Matches</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">{enteredCount} of {scheduledMatches.length} entered</p>
+                  </div>
+                  <div className="p-4 flex flex-col gap-2">
+                    {scheduledMatches.map((m) => {
+                      const isDone = m.match_status !== "scheduled";
+                      return (
                         <button
                           key={m.id}
                           onClick={() => { setSelMatchId(m.id); setHomeScore(""); setAwayScore(""); }}
-                          className={`w-full text-left p-3 rounded-lg border transition-colors ${selMatchId === m.id ? "border-primary bg-primary/10" : "border-neutral-700 hover:border-neutral-600"}`}
+                          className={`w-full text-left p-3 rounded-lg border transition-colors duration-150 ${
+                            selMatchId === m.id
+                              ? "border-accent bg-accent-muted"
+                              : isDone
+                                ? "border-border bg-surface-2 opacity-70"
+                                : "border-border hover:border-border-strong"
+                          }`}
                         >
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium truncate">{m.home_team?.name ?? "Home"} vs {m.away_team?.name ?? "Away"}</span>
-                            {m.match_status !== "scheduled" && <Check className="h-4 w-4 text-green-500 shrink-0" />}
+                            {isDone ? (
+                              <span className="flex items-center gap-1.5 text-status-positive shrink-0">
+                                <span className="text-xs font-bold tabular-nums">{m.home_score}-{m.away_score}</span>
+                                <Check className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground shrink-0">Pending</span>
+                            )}
                           </div>
                         </button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-neutral-900 border-neutral-800 lg:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="text-base">Enter Result</CardTitle>
-                    <CardDescription>{selectedMatch ? `${selectedMatch.home_team?.name ?? "Home"} vs ${selectedMatch.away_team?.name ?? "Away"}` : "Select a match"}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {selectedMatch && (
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border-strong bg-surface overflow-hidden lg:col-span-2">
+                  <div className="px-6 pt-5 pb-1">
+                    <h2 className="font-display text-xl">Enter Result</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {selectedMatch ? `${selectedMatch.home_team?.name ?? "Home"} vs ${selectedMatch.away_team?.name ?? "Away"}` : "Select a match"}
+                    </p>
+                  </div>
+                  <div className="p-6 pt-4 flex flex-col gap-6">
+                    {selectedMatch && selectedMatch.match_status === "scheduled" ? (
                       <>
                         <div className="flex items-center justify-center gap-8">
                           <div className="flex flex-col items-center gap-2">
@@ -307,9 +331,16 @@ export default function InsertResultsPage() {
                           Save Result
                         </Button>
                       </>
-                    )}
-                  </CardContent>
-                </Card>
+                    ) : selectedMatch ? (
+                      <div className="flex flex-col items-center gap-2 py-4">
+                        <span className="flex items-center gap-1.5 text-status-positive text-sm font-medium">
+                          <Check className="h-4 w-4" /> Result already entered
+                        </span>
+                        <span className="text-3xl font-bold tabular-nums">{selectedMatch.home_score} - {selectedMatch.away_score}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             )}
           </TabsContent>

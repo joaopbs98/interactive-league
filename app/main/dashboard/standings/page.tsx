@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -13,6 +11,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useLeague } from "@/contexts/LeagueContext";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 type Standing = {
   id: string;
@@ -75,14 +75,14 @@ function StandingsTable({
     <div className="overflow-x-auto -mx-4 md:mx-0">
     <table className="w-full text-sm min-w-[600px]">
       <thead>
-        <tr className="border-b border-neutral-800 text-muted-foreground text-left">
-          <th className="p-3 w-10 text-center">#</th>
-          <th className="p-3">Club</th>
+        <tr className="border-b border-border text-muted-foreground text-left text-[11px] uppercase tracking-wider">
+          <th className="p-3 w-10 text-center font-medium">#</th>
+          <th className="p-3 font-medium">Club</th>
           {formData && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <th className="p-3 text-center cursor-help">Form</th>
+                  <th className="p-3 text-center cursor-help font-medium">Form</th>
                 </TooltipTrigger>
                 <TooltipContent>Last 5 results (W=Win, D=Draw, L=Loss)</TooltipContent>
               </Tooltip>
@@ -95,9 +95,7 @@ function StandingsTable({
           <ColHeader abbr="GF" full="Goals For" />
           <ColHeader abbr="GA" full="Goals Against" />
           <ColHeader abbr="GD" full="Goal Difference" />
-          <th className="p-3 text-center font-bold">
-            <ColHeader abbr="Pts" full="Points" />
-          </th>
+          <ColHeader abbr="Pts" full="Points" />
         </tr>
       </thead>
       <tbody>
@@ -107,15 +105,15 @@ function StandingsTable({
           return (
           <tr
             key={s.id}
-            className={`border-b border-neutral-800/50 hover:bg-neutral-800/30 ${
-              i === 0 ? "bg-yellow-900/10" : ""
-            } ${isUserTeam ? "ring-1 ring-blue-500/50" : ""}`}
+            className={`border-b border-border/60 transition-colors duration-150 hover:bg-surface-3/60 ${
+              isUserTeam ? "bg-accent-muted hover:bg-accent-muted" : ""
+            }`}
           >
-            <td className="p-3 text-center font-bold">
-              {i < 1 ? (
-                <Badge variant="default" className="bg-yellow-600 text-xs">{i + 1}</Badge>
+            <td className="p-3 text-center font-bold tabular-nums">
+              {i === 0 ? (
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold bg-gold/15 text-gold">{i + 1}</span>
               ) : i < 3 ? (
-                <Badge variant="secondary" className="text-xs">{i + 1}</Badge>
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold bg-surface-3 text-foreground">{i + 1}</span>
               ) : (
                 <span className="text-muted-foreground">{i + 1}</span>
               )}
@@ -127,7 +125,7 @@ function StandingsTable({
               {leagueId && s.team_id ? (
                 <Link
                   href={`/main/dashboard/team/${s.team_id}/squad?league=${leagueId}`}
-                  className="font-medium hover:text-primary hover:underline"
+                  className="font-medium hover:text-accent transition-colors duration-150"
                 >
                   {s.team?.name || "Unknown"}
                 </Link>
@@ -141,16 +139,16 @@ function StandingsTable({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="font-mono text-xs">
+                      <span className="font-mono text-xs tabular-nums">
                         {formStr.split("").map((c, j) => (
                           <span
                             key={j}
                             className={
                               c === "W"
-                                ? "text-green-400"
+                                ? "text-status-positive"
                                 : c === "D"
-                                  ? "text-yellow-400"
-                                  : "text-red-400"
+                                  ? "text-status-warning"
+                                  : "text-status-negative"
                             }
                           >
                             {c}
@@ -174,16 +172,16 @@ function StandingsTable({
                 </TooltipProvider>
               </td>
             )}
-            <td className="p-3 text-center">{s.played}</td>
-            <td className="p-3 text-center text-green-400">{s.wins}</td>
-            <td className="p-3 text-center text-yellow-400">{s.draws}</td>
-            <td className="p-3 text-center text-red-400">{s.losses}</td>
-            <td className="p-3 text-center">{s.goals_for}</td>
-            <td className="p-3 text-center">{s.goals_against}</td>
-            <td className="p-3 text-center font-medium">
+            <td className="p-3 text-center tabular-nums">{s.played}</td>
+            <td className="p-3 text-center tabular-nums text-status-positive">{s.wins}</td>
+            <td className="p-3 text-center tabular-nums text-status-warning">{s.draws}</td>
+            <td className="p-3 text-center tabular-nums text-status-negative">{s.losses}</td>
+            <td className="p-3 text-center tabular-nums">{s.goals_for}</td>
+            <td className="p-3 text-center tabular-nums">{s.goals_against}</td>
+            <td className="p-3 text-center font-medium tabular-nums">
               {s.goal_diff > 0 ? `+${s.goal_diff}` : s.goal_diff}
             </td>
-            <td className="p-3 text-center font-bold text-lg">{s.points}</td>
+            <td className="p-3 text-center font-bold text-lg tabular-nums">{s.points}</td>
           </tr>
         );})}
       </tbody>
@@ -267,66 +265,100 @@ export default function StandingsPage() {
     );
   }
 
-  const hasDomestic = domesticRows.length > 0;
-  const hasComp = compRows.length > 0;
-  const isEmpty = competitionType === "domestic" ? !hasDomestic : !hasComp;
+  const myRankIdx = domesticRows.findIndex((s) => s.team_id === selectedTeam?.id);
+  const myStanding = myRankIdx >= 0 ? domesticRows[myRankIdx] : null;
+  const myForm = formData?.form?.[selectedTeam?.id ?? ""] ?? null;
 
   const renderContent = () => {
     if (competitionType === "domestic") {
       if (domesticRows.length === 0) {
         return (
-          <Card className="bg-neutral-900 border-neutral-800">
-            <CardContent className="p-8 text-center text-muted-foreground">
-              <p className="text-lg font-medium mb-2">No league standings yet</p>
-              <p className="text-sm">The host needs to generate a schedule and simulate matchdays first.</p>
-            </CardContent>
-          </Card>
+          <div className="rounded-lg border border-border-strong bg-surface p-8 text-center text-muted-foreground">
+            <p className="text-lg font-medium mb-2 text-foreground">No league standings yet</p>
+            <p className="text-sm">The host needs to generate a schedule and simulate matchdays first.</p>
+          </div>
         );
       }
       return (
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-0">
-            <StandingsTable
-              rows={domesticRows}
-              formData={formData}
-              selectedTeamId={selectedTeam?.id}
-              leagueId={selectedLeagueId}
-            />
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-border-strong bg-surface overflow-hidden">
+          <div className="px-4 pt-4">
+            <h2 className="font-display text-2xl">League Table</h2>
+          </div>
+          <StandingsTable
+            rows={domesticRows}
+            formData={formData}
+            selectedTeamId={selectedTeam?.id}
+            leagueId={selectedLeagueId}
+          />
+        </div>
       );
     }
     if (compRows.length === 0) {
       return (
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            <p className="text-lg font-medium mb-2">No {competitionType.toUpperCase()} standings yet</p>
-            <p className="text-sm">Group stage standings will appear after international matches are simulated.</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-border-strong bg-surface p-8 text-center text-muted-foreground">
+          <p className="text-lg font-medium mb-2 text-foreground">No {competitionType.toUpperCase()} standings yet</p>
+          <p className="text-sm">Group stage standings will appear after international matches are simulated.</p>
+        </div>
       );
     }
     return (
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardContent className="p-0">
-          <div className="p-4 space-y-6">
-            {groups.map((groupName) => (
-              <div key={groupName}>
-                <h4 className="text-sm font-semibold text-muted-foreground mb-2">Group {groupName}</h4>
-                <StandingsTable rows={byGroup[groupName]} formData={formData} selectedTeamId={selectedTeam?.id} leagueId={selectedLeagueId} />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="rounded-lg border border-border-strong bg-surface overflow-hidden">
+        <div className="p-4 space-y-6">
+          {groups.map((groupName) => (
+            <div key={groupName}>
+              <h4 className="font-display text-xl mb-2">Group {groupName}</h4>
+              <StandingsTable rows={byGroup[groupName]} formData={formData} selectedTeamId={selectedTeam?.id} leagueId={selectedLeagueId} />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   };
 
   return (
     <div className="p-8 flex flex-col gap-6">
-      <h2 className="text-2xl font-bold">Standings</h2>
+      <Breadcrumbs />
+      <PageHeader eyebrow="League" title="Standings" />
 
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-status-negative text-sm">{error}</p>}
+
+      {/* Your Position — answers "where do I stand" instantly, without scrolling a 20-row table */}
+      {myStanding && (
+        <div className="relative overflow-hidden rounded-lg border border-border-strong bg-surface p-6 flex flex-wrap items-end gap-x-10 gap-y-4 glow-blue">
+          <div className="relative">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Your Position</p>
+            <p className="font-display text-6xl text-accent tabular-nums leading-none">#{myRankIdx + 1}</p>
+            <p className="text-xs text-muted-foreground mt-1.5">of {domesticRows.length} clubs</p>
+          </div>
+          <div className="relative">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Points</p>
+            <p className="text-2xl font-bold tabular-nums">{myStanding.points}</p>
+          </div>
+          <div className="relative">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Record</p>
+            <p className="text-2xl font-bold tabular-nums">
+              <span className="text-status-positive">{myStanding.wins}W</span>{" "}
+              <span className="text-status-warning">{myStanding.draws}D</span>{" "}
+              <span className="text-status-negative">{myStanding.losses}L</span>
+            </p>
+          </div>
+          {myForm && (
+            <div className="relative">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Form (last 5)</p>
+              <p className="font-mono text-lg tabular-nums">
+                {myForm.split("").map((c, j) => (
+                  <span
+                    key={j}
+                    className={c === "W" ? "text-status-positive" : c === "D" ? "text-status-warning" : "text-status-negative"}
+                  >
+                    {c}
+                  </span>
+                ))}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <Tabs value={competitionType} onValueChange={(v) => setCompetitionType(v as typeof competitionType)}>
         <TabsList>

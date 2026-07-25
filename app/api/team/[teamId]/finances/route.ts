@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
           availableBalance,
           totalWageBill,
           committedToWages: totalWageBill,
-          remainingBudget: team.budget || 0,
+          remainingBudget: availableBalance,
           totalBudget: team.budget || 0
         },
         wageBreakdown: {

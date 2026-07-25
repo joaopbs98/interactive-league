@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useRefresh } from "@/contexts/RefreshContext";
 import { Button } from "@/components/ui/button";
 import { Loader2, Banknote, Plus, DollarSign } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { Toaster, toast } from "sonner";
 
 type Loan = {
   id: string;
@@ -24,11 +27,11 @@ type Loan = {
 
 export default function LoansPage() {
   const { selectedLeagueId, selectedTeam } = useLeague();
+  const { triggerRefresh } = useRefresh();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [leagueSeason, setLeagueSeason] = useState(1);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     if (selectedLeagueId && selectedTeam?.id) {
@@ -59,7 +62,6 @@ export default function LoansPage() {
 
   const handleTakeLoan = async () => {
     setActionLoading("take");
-    setMessage(null);
     try {
       const res = await fetch("/api/loans", {
         method: "POST",
@@ -72,13 +74,14 @@ export default function LoansPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "success", text: "Loan of $60M taken. Total repayment: $75M (25% interest)." });
+        toast.success("Loan of $60M taken. Total repayment: $75M (25% interest).");
         fetchLoans();
+        triggerRefresh();
       } else {
-        setMessage({ type: "error", text: data.error });
+        toast.error(data.error ?? "Failed to take loan");
       }
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
+      toast.error(err.message ?? "Failed to take loan");
     } finally {
       setActionLoading(null);
     }
@@ -86,7 +89,6 @@ export default function LoansPage() {
 
   const handleRepay = async (loanId: string) => {
     setActionLoading(loanId);
-    setMessage(null);
     try {
       const res = await fetch("/api/loans", {
         method: "POST",
@@ -100,13 +102,14 @@ export default function LoansPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "success", text: "Repayment made." });
+        toast.success("Repayment made.");
         fetchLoans();
+        triggerRefresh();
       } else {
-        setMessage({ type: "error", text: data.error });
+        toast.error(data.error ?? "Failed to repay loan");
       }
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
+      toast.error(err.message ?? "Failed to repay loan");
     } finally {
       setActionLoading(null);
     }
@@ -128,7 +131,6 @@ export default function LoansPage() {
 
   const handleRestructure = async (loanId: string, pct: number) => {
     setActionLoading(`restructure-${loanId}`);
-    setMessage(null);
     try {
       const res = await fetch("/api/loans", {
         method: "POST",
@@ -143,13 +145,14 @@ export default function LoansPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "success", text: `Restructured: defer ${pct}% of first repayment. New schedule applied.` });
+        toast.success(`Restructured: defer ${pct}% of first repayment. New schedule applied.`);
         fetchLoans();
+        triggerRefresh();
       } else {
-        setMessage({ type: "error", text: data.error });
+        toast.error(data.error ?? "Failed to restructure loan");
       }
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
+      toast.error(err.message ?? "Failed to restructure loan");
     } finally {
       setActionLoading(null);
     }
@@ -159,12 +162,10 @@ export default function LoansPage() {
     return (
       <div className="p-8">
         <h2 className="text-2xl font-bold mb-4">Loans</h2>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            <p className="text-lg font-medium mb-2">Select a league and team to continue</p>
-            <p className="text-sm">Choose a league from the Saves page to manage loans.</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted-foreground">
+          <p className="text-lg font-medium mb-2 text-foreground">Select a league and team to continue</p>
+          <p className="text-sm">Choose a league from the Saves page to manage loans.</p>
+        </div>
       </div>
     );
   }
@@ -178,35 +179,23 @@ export default function LoansPage() {
   }
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <h2 className="text-2xl font-bold flex items-center gap-2">
-        <Banknote className="h-6 w-6" /> Loans
-      </h2>
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
+      <Toaster position="top-center" richColors />
+      <Breadcrumbs />
+      <PageHeader eyebrow="Bank & Balance" title="Loans" />
 
-      {message && (
-        <div
-          className={`p-3 rounded text-sm ${
-            message.type === "success"
-              ? "bg-green-900/30 text-green-300 border border-green-800"
-              : "bg-red-900/30 text-red-300 border border-red-800"
-          }`}
-        >
-          {message.text}
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <Banknote className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Take Loan
+          </h2>
         </div>
-      )}
-
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader>
-          <CardTitle>Take Loan</CardTitle>
-          <CardDescription>
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-muted-foreground">
             $60M loan with 25% interest ($75M total repayment). Available in seasons 2–7 only. 3 installments of ~$25M.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            onClick={handleTakeLoan}
-            disabled={!canTakeLoan || actionLoading === "take"}
-          >
+          </p>
+          <Button onClick={handleTakeLoan} disabled={!canTakeLoan || actionLoading === "take"}>
             {actionLoading === "take" ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : (
@@ -215,81 +204,92 @@ export default function LoansPage() {
             Take $60M Loan
           </Button>
           {!canTakeLoan && (
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-xs text-muted-foreground">
               {leagueSeason < 2 || leagueSeason > 7
                 ? `Loans available in seasons 2–7 (current: ${leagueSeason})`
                 : "You already have an active loan"}
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader>
-          <CardTitle>Your Loans</CardTitle>
-          <CardDescription>Active and paid-off loans.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden" style={{ animationDelay: "40ms" }}>
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Your Loans
+          </h2>
+          <span className="text-[10px] text-faint-foreground uppercase tracking-wider ml-auto">
+            Active and paid-off
+          </span>
+        </div>
+        <div className="p-5">
           {loans.length === 0 ? (
-            <p className="text-muted-foreground">No loans yet.</p>
+            <p className="text-muted-foreground text-sm">No loans yet.</p>
           ) : (
-            <div className="space-y-4">
-              {loans.map((loan) => (
-                <div
-                  key={loan.id}
-                  className="flex flex-col gap-2 p-4 rounded-lg bg-neutral-800/50"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">
-                        ${(loan.amount / 1e6).toFixed(0)}M (Season {loan.season_taken})
-                        {loan.restructure_confirmed && (
-                          <span className="ml-2 text-xs text-amber-400">Restructured {loan.restructure_pct}%</span>
-                        )}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Repay: {loan.repay_made}/3 · Remaining: ${(loan.remaining / 1e6).toFixed(1)}M
-                      </p>
+            <div className="space-y-3">
+              {loans.map((loan) => {
+                const pct = Math.min(100, (loan.repay_made / 3) * 100);
+                return (
+                  <div key={loan.id} className="rounded-lg border border-border bg-surface-2 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium">
+                          ${(loan.amount / 1e6).toFixed(0)}M (Season {loan.season_taken})
+                          {loan.restructure_confirmed && (
+                            <span className="ml-2 text-xs text-status-warning">Restructured {loan.restructure_pct}%</span>
+                          )}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Repay: {loan.repay_made}/3 · Remaining: <span className="tabular-nums">${(loan.remaining / 1e6).toFixed(1)}M</span>
+                        </p>
+                      </div>
+                      {loan.remaining > 0 && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleRepay(loan.id)}
+                          disabled={!!actionLoading}
+                          className="shrink-0"
+                        >
+                          {actionLoading === loan.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <DollarSign className="h-3 w-3 mr-1" /> Repay ~${((getRepayAmount(loan) ?? 0) / 1e6).toFixed(0)}M
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
-                    {loan.remaining > 0 && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleRepay(loan.id)}
-                        disabled={!!actionLoading}
-                      >
-                        {actionLoading === loan.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <>
-                            <DollarSign className="h-3 w-3 mr-1" /> Repay ~${((getRepayAmount(loan) ?? 0) / 1e6).toFixed(0)}M
-                          </>
-                        )}
-                      </Button>
+                    <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${loan.remaining > 0 ? "bg-accent" : "bg-status-positive"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    {canRestructure(loan) && (
+                      <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                        <span className="text-xs text-muted-foreground self-center">Restructure (defer 1st):</span>
+                        {[25, 50, 75, 100].map((restructurePct) => (
+                          <Button
+                            key={restructurePct}
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => handleRestructure(loan.id, restructurePct)}
+                            disabled={!!actionLoading}
+                          >
+                            {restructurePct}%
+                          </Button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  {canRestructure(loan) && (
-                    <div className="flex flex-wrap gap-2 pt-2 border-t border-neutral-700">
-                      <span className="text-xs text-muted-foreground self-center">Restructure (defer 1st):</span>
-                      {[25, 50, 75, 100].map((pct) => (
-                        <Button
-                          key={pct}
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={() => handleRestructure(loan.id, pct)}
-                          disabled={!!actionLoading}
-                        >
-                          {pct}%
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

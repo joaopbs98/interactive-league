@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
         positions: pos,
         overall_rating: r,
         international_reputation: ir,
+        source_league_id: leagueId,
       };
       if (nationality != null && String(nationality).trim()) playerInsert.country_name = String(nationality).trim();
       if (dob != null && String(dob).trim()) playerInsert.dob = String(dob).trim();
@@ -190,7 +191,17 @@ export async function POST(request: NextRequest) {
         rating: r,
         team_id: teamId,
         origin_type: "signed",
+        international_reputation: ir,
       };
+      if (nationality != null && String(nationality).trim()) lpInsert.country_name = String(nationality).trim();
+      if (dob != null && String(dob).trim()) lpInsert.dob = String(dob).trim();
+      if (heightCm != null && String(heightCm).trim()) lpInsert.height_cm = String(heightCm).trim();
+      if (weightKg != null && String(weightKg).trim()) lpInsert.weight_kg = String(weightKg).trim();
+      if (customValue != null && !isNaN(Number(customValue))) lpInsert.value = String(customValue);
+      if (preferredFoot != null && String(preferredFoot).trim()) lpInsert.preferred_foot = String(preferredFoot).trim();
+      if (skillMoves != null && String(skillMoves).trim()) lpInsert.skill_moves = String(skillMoves).trim();
+      if (weakFoot != null && String(weakFoot).trim()) lpInsert.weak_foot = String(weakFoot).trim();
+      if (bodyType != null && String(bodyType).trim()) lpInsert.body_type = String(bodyType).trim();
       if (potential != null && typeof potential === "number" && potential >= 40 && potential <= 99) {
         lpInsert.potential = potential;
       }

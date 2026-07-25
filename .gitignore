@@ -36,6 +36,16 @@ yarn-error.log*
 # Cursor MCP config (may contain secrets)
 .cursor/mcp.json
 
+# Claude Code MCP config (may contain secrets, e.g. Supabase access token)
+.mcp.json
+
+# Local agent configuration and development logs
+.agents/
+.claude/
+.codex/
+.cursor/skills/
+dev*.log
+
 # vercel
 .vercel
 

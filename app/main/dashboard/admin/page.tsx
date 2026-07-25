@@ -22,7 +22,7 @@ export default function AdminPage() {
   return (
     <div className="p-8">
       <h2 className="text-2xl font-bold mb-4">Admin Tools</h2>
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card className="bg-surface border-border">
         <CardContent className="p-8 text-center">
           {!selectedLeagueId || !selectedTeam ? (
             <>

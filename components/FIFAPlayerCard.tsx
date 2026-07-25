@@ -257,7 +257,7 @@ export function FIFAPlayerCard({
                 {onRelease && (
                   <DropdownMenuItem 
                     onClick={() => onRelease(player.player_id)}
-                    className="text-red-600"
+                    className="text-status-negative"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Release Player

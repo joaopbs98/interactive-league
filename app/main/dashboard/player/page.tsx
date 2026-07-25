@@ -224,12 +224,12 @@ export default function PlayerSearchPage() {
         <button
           type="submit"
           disabled={loading || !query}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          className="bg-accent text-accent-foreground px-4 py-2 rounded disabled:opacity-50"
         >
           Search
         </button>
       </form>
-      {error && <p className="text-red-500">{error}</p>}
+      {error && <p className="text-status-negative">{error}</p>}
 
       {!player && results.length > 0 && (
         <ul className="space-y-2">
@@ -237,7 +237,7 @@ export default function PlayerSearchPage() {
             <li key={p.player_id}>
               <button
                 onClick={() => loadPlayer(p.player_id)}
-                className="w-full flex justify-between px-3 py-2 hover:bg-gray-800 rounded"
+                className="w-full flex justify-between px-3 py-2 hover:bg-surface-2 rounded"
               >
                 <span>{p.full_name}</span>
                 <Badge className={getStatColor(p.overall_rating ?? 0)}>
@@ -253,7 +253,7 @@ export default function PlayerSearchPage() {
         <div className="space-y-6">
           <button
             onClick={() => setPlayer(null)}
-            className="text-gray-400 hover:underline"
+            className="text-muted-foreground hover:underline"
           >
             ← Back to results
           </button>
@@ -279,9 +279,9 @@ export default function PlayerSearchPage() {
                     <span>{player.height_cm} cm</span>
                     <span>{player.weight_kg} kg</span>
                   </div>
-                  <p className="text-sm text-gray-400">{player.description}</p>
+                  <p className="text-sm text-muted-foreground">{player.description}</p>
                   <div>
-                    <div className="text-sm text-gray-500">Wage</div>
+                    <div className="text-sm text-muted-foreground">Wage</div>
                     <div className="text-xl font-semibold">{computedWage}</div>
                   </div>
                 </div>
@@ -351,7 +351,7 @@ export default function PlayerSearchPage() {
                   {keys.map((stat) => (
                     <div
                       key={stat}
-                      className="flex items-center space-x-2 p-2 rounded hover:bg-gray-800"
+                      className="flex items-center space-x-2 p-2 rounded hover:bg-surface-2"
                     >
                       <Badge
                         className={getStatColor(Number(player[stat] ?? 0))}

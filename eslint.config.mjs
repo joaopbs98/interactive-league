@@ -1,11 +1,10 @@
 import { dirname } from "path";
 import { fileURLToPath } from "url";
-import pkg from "@eslint/eslintrc";
+import { FlatCompat } from "@eslint/eslintrc";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const FlatCompat = pkg.FlatCompat ?? pkg.default?.FlatCompat ?? pkg.default;
 const compat = new FlatCompat({
   baseDirectory: __dirname,
 });

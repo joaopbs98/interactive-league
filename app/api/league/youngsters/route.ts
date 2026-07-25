@@ -116,6 +116,7 @@ export async function GET(request: NextRequest) {
       }
     }
     let performanceMap: Record<string, Record<string, number | null>> = {};
+    let analyticsMap: Record<string, { games: number; minutes: number; ratingMinutes: number; competitions: Record<string, { appearances: number; minutes: number; averageRating: number }> }> = {};
 
     if (leaguePlayerIds.length > 0) {
       const { data: perfRows } = await serviceSupabase
@@ -145,14 +146,35 @@ export async function GET(request: NextRequest) {
           uecl_ko_avg: p.uecl_ko_avg,
         };
       }
+
+      const playerIds = (youngsters || []).map((y: { player_id: string }) => y.player_id);
+      const { data: analyticsRows } = await serviceSupabase
+        .from("player_season_analytics")
+        .select("player_id,competition_type,qualifying_appearances,minutes,average_rating")
+        .eq("league_id", leagueId)
+        .eq("season", season)
+        .eq("engine_version", "fc25-il-2")
+        .in("player_id", playerIds);
+      for (const row of analyticsRows || []) {
+        const current = analyticsMap[row.player_id] || { games: 0, minutes: 0, ratingMinutes: 0, competitions: {} };
+        const appearances = Number(row.qualifying_appearances || 0);
+        const minutes = Number(row.minutes || 0);
+        const averageRating = Number(row.average_rating || 0);
+        current.games += appearances;
+        current.minutes += minutes;
+        current.ratingMinutes += averageRating * minutes;
+        current.competitions[row.competition_type] = { appearances, minutes, averageRating };
+        analyticsMap[row.player_id] = current;
+      }
     }
 
     const list = (youngsters || []).map((y: Record<string, unknown>) => {
       const perf = performanceMap[y.id as string] || {};
+      const analytics = analyticsMap[y.player_id as string];
       const gamesFromPerf = computeTotalGamesFromPerformance(perf);
       const adjAvgFromPerf = computeAdjAvgFromPerformance(perf);
-      const games = gamesFromPerf > 0 ? gamesFromPerf : (y.youngster_games_played as number) ?? 0;
-      const adjAvg = adjAvgFromPerf ?? (y.youngster_adj_avg as number) ?? 0;
+      const games = analytics?.games > 0 ? analytics.games : gamesFromPerf > 0 ? gamesFromPerf : (y.youngster_games_played as number) ?? 0;
+      const adjAvg = analytics?.minutes > 0 ? analytics.ratingMinutes / analytics.minutes : adjAvgFromPerf ?? (y.youngster_adj_avg as number) ?? 0;
       const baseRating = (y.base_rating as number) ?? (y.rating as number) ?? 60;
       const delta = getYoungsterUpgrade(baseRating, games, adjAvg);
       const newRating = Math.min(99, Math.max(40, baseRating + delta));
@@ -174,6 +196,7 @@ export async function GET(request: NextRequest) {
         indTrainingAttrs: y.youngster_ind_training_attrs as string[] | null,
         nonWeightedAttrs: y.youngster_non_weighted_attrs as string[] | null,
         performance: Object.keys(perf).length > 0 ? perf : null,
+        analyticalEvidence: analytics ? { engineVersion: "fc25-il-2", minutes: analytics.minutes, competitions: analytics.competitions } : null,
         totalGames: games,
         computedAdjAvg: adjAvg,
         previewDelta: delta,
@@ -292,7 +315,10 @@ export async function POST(request: NextRequest) {
       }
 
       const rating = Number(lpData.base_rating ?? lpData.rating ?? 60) || 60;
-      const delta = getYoungsterUpgrade(rating, games, Number(avg) || 0);
+      const suggestedDelta = getYoungsterUpgrade(rating, games, Number(avg) || 0);
+      const requestedDelta = Number.isFinite(Number(u.finalDelta)) ? Math.trunc(Number(u.finalDelta)) : suggestedDelta;
+      const potentialRoom = Math.max(0, Number(lpData.potential ?? 99) - rating);
+      const delta = Math.max(-4, Math.min(requestedDelta, 4, potentialRoom));
       const newRating = Math.min(99, Math.max(40, rating + delta));
 
       const currentAttrs: Record<string, number | null> = {};
@@ -327,6 +353,20 @@ export async function POST(request: NextRequest) {
       }
 
       const r = rpcData as { success: boolean; new_rating?: number };
+      await serviceSupabase.from("youngster_growth_reviews").upsert({
+        league_id: leagueId,
+        season,
+        team_id: lpData.team_id,
+        player_id: lpPlayerId,
+        league_player_id: lpData.id,
+        engine_version: "fc25-il-2",
+        evidence: { games, averageRating: avg, performance: performance || null },
+        suggested_delta: suggestedDelta,
+        final_delta: delta,
+        status: delta === suggestedDelta ? "approved" : "adjusted",
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      }, { onConflict: "league_id,season,league_player_id,engine_version" });
       results.push({
         playerId: lpPlayerId,
         delta,

@@ -42,17 +42,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    // Update international_reputation on player table when provided
+    const updates: Record<string, unknown> = {};
+
+    // International reputation is a save-specific override, never a master-catalogue mutation.
     if (typeof internationalReputation === "number" && internationalReputation >= 1 && internationalReputation <= 5 && existing.player_id) {
-      await serviceSupabase
-        .from("player")
-        .update({ international_reputation: String(internationalReputation) })
-        .eq("player_id", existing.player_id);
+      updates.international_reputation = String(internationalReputation);
     }
 
     const statColumns = ["acceleration", "sprint_speed", "agility", "reactions", "balance", "shot_power", "jumping", "stamina", "strength", "long_shots", "aggression", "interceptions", "positioning", "vision", "penalties", "composure", "crossing", "finishing", "heading_accuracy", "short_passing", "volleys", "dribbling", "curve", "fk_accuracy", "long_passing", "ball_control", "defensive_awareness", "standing_tackle", "sliding_tackle", "gk_diving", "gk_handling", "gk_kicking", "gk_positioning", "gk_reflexes"] as const;
 
-    const updates: Record<string, unknown> = {};
     if (typeof rating === "number" && rating >= 40 && rating <= 99) {
       updates.rating = rating;
     }

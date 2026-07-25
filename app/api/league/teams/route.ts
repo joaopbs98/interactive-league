@@ -23,7 +23,11 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         name,
-        acronym
+        acronym,
+        logo_url,
+        user_id,
+        mock_identity_key,
+        mock_personality
       `)
       .eq('league_id', leagueId)
       .order('name', { ascending: true });
@@ -49,4 +53,4 @@ export async function GET(request: NextRequest) {
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
-} 
+}

@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLeague } from "@/contexts/LeagueContext";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import {
   Shield,
   Loader2,
-  Gamepad2,
   ScrollText,
   ArrowLeft,
   ChevronRight,
@@ -89,7 +90,7 @@ export default function EafcSetupPage() {
   if (!isHost) {
     return (
       <div className="p-8">
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardContent className="p-8 text-center">
             <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
             <p className="text-lg font-medium">Host Only</p>
@@ -107,50 +108,65 @@ export default function EafcSetupPage() {
 
   return (
     <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Gamepad2 className="h-7 w-7" /> EAFC Setup
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Click a team to view formation, squad, tactic code, and manager notes.
-          </p>
+      <Breadcrumbs />
+      <PageHeader
+        eyebrow="League"
+        title="EAFC Setup"
+        subtitle="Click a team to view formation, squad, tactic code, and manager notes."
+        actions={
+          <Button variant="outline" onClick={() => router.push("/main/dashboard/host-controls")}>
+            <ArrowLeft className="h-4 w-4 mr-2" /> Host Controls
+          </Button>
+        }
+      />
+
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <Shield className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Teams
+          </h2>
+          <span className="text-[10px] text-faint-foreground uppercase tracking-wider ml-auto">
+            {teams.length} total
+          </span>
         </div>
-        <Button variant="outline" onClick={() => router.push("/main/dashboard/host-controls")}>
-          <ArrowLeft className="h-4 w-4 mr-2" /> Host Controls
-        </Button>
-      </div>
+        <div className="divide-y divide-border">
+          {teams.map((team) => (
+            <Link
+              key={team.id}
+              href={`/main/dashboard/eafc-setup/${team.id}`}
+              className="group flex items-center gap-4 px-5 py-4 hover:bg-surface-2 transition-colors duration-150"
+            >
+              <div className="h-9 w-9 rounded-full bg-surface-3 border border-border flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold text-foreground">
+                  {team.acronym || team.name.slice(0, 3).toUpperCase()}
+                </span>
+              </div>
+              <span className="font-semibold flex-1 min-w-0 truncate">{team.name}</span>
+              <Badge variant="outline" className="shrink-0">{team.formation || "—"}</Badge>
+              <Badge className="shrink-0">{team.squad.length} players</Badge>
+              <code className="hidden sm:block text-xs font-mono text-muted-foreground truncate w-[140px] shrink-0">
+                {team.eafc_tactic_code || "—"}
+              </code>
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-foreground transition-colors duration-150" />
+            </Link>
+          ))}
+          {teams.length === 0 && (
+            <p className="px-5 py-8 text-sm text-muted-foreground text-center">No teams yet.</p>
+          )}
+        </div>
+      </section>
 
-      <div className="grid gap-3">
-        {teams.map((team) => (
-          <Link key={team.id} href={`/main/dashboard/eafc-setup/${team.id}`}>
-            <Card className="bg-neutral-900/50 border-neutral-800 hover:bg-neutral-800/50 hover:border-neutral-700 transition-colors cursor-pointer">
-              <CardContent className="p-4 flex items-center gap-3">
-                <span className="font-semibold flex-1">{team.name}</span>
-                <Badge variant="outline">{team.formation || "—"}</Badge>
-                <Badge>{team.squad.length} players</Badge>
-                {team.eafc_tactic_code && (
-                  <code className="text-xs font-mono text-muted-foreground truncate max-w-[140px]">
-                    {team.eafc_tactic_code}
-                  </code>
-                )}
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
-
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <ScrollText className="h-4 w-4" /> Host Changelog
-          </CardTitle>
-          <CardDescription>
-            All host actions (player edits, result inserts, fines) are logged here.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <ScrollText className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Host Changelog
+            </h2>
+          </div>
+        </div>
+        <div className="p-5">
           {hostActionsLogs.length === 0 ? (
             <p className="text-sm text-muted-foreground">No host actions yet.</p>
           ) : (
@@ -158,7 +174,7 @@ export default function EafcSetupPage() {
               {hostActionsLogs.slice(0, 50).map((log) => (
                 <div
                   key={log.id}
-                  className="flex items-start gap-3 p-2 rounded bg-neutral-800/50 text-sm"
+                  className="flex items-start gap-3 p-2 rounded bg-surface-3 text-sm"
                 >
                   <Badge variant="outline" className="text-xs shrink-0">
                     {log.action}
@@ -173,8 +189,8 @@ export default function EafcSetupPage() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

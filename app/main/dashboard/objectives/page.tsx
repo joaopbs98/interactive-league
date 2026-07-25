@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Target, Trophy, Briefcase } from "lucide-react";
+import { Trophy, Briefcase } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import Link from "next/link";
 
 type TradeObjective = {
@@ -72,56 +73,52 @@ export default function ObjectivesPage() {
   const { tradeObjectives = [], sponsorObjective } = data || {};
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <h2 className="text-2xl font-bold flex items-center gap-2">
-        <Target className="h-7 w-7" />
-        Objectives Tracker
-      </h2>
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
+      <Breadcrumbs />
+      <PageHeader eyebrow="Overview" title="Objectives Tracker" />
 
       {sponsorObjective && (
-        <Card className="bg-neutral-900 border-neutral-800 border-l-4 border-l-amber-500">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-amber-500" />
-              Sponsor bonus objective
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section className="panel-in rounded-lg border border-status-warning/30 bg-surface overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+            <Trophy className="h-4 w-4 text-status-warning" />
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Sponsor Bonus Objective</h2>
+          </div>
+          <div className="p-5">
             <p className="text-sm">{sponsorObjective.description}</p>
             {sponsorObjective.bonus_amount != null && sponsorObjective.bonus_amount > 0 && (
-              <p className="text-sm font-medium text-green-400 mt-2">
+              <p className="text-sm font-medium text-status-positive mt-2">
                 Bonus: €{formatMoney(sponsorObjective.bonus_amount)}
               </p>
             )}
-            <Link href="/main/dashboard/sponsors">
-              <span className="text-sm text-primary hover:underline mt-2 inline-block">View sponsor details →</span>
+            <Link href="/main/dashboard/sponsors" className="text-sm text-accent hover:text-accent/80 mt-2 inline-block transition-colors duration-150">
+              View sponsor details →
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
 
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Briefcase className="h-5 w-5" />
-            Trade objectives
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden" style={{ animationDelay: "40ms" }}>
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <Briefcase className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Trade Objectives</h2>
+          </div>
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-muted-foreground mb-4">
             Conditional clauses from trades. Evaluated at end of season.
           </p>
-        </CardHeader>
-        <CardContent>
           {tradeObjectives.length === 0 ? (
             <p className="text-muted-foreground text-sm py-8 text-center">
               No trade objectives yet. Create trades with objectives to see them here.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {tradeObjectives.map((obj) => (
                 <div
                   key={obj.id}
                   className={`p-4 rounded-lg border ${
-                    obj.fulfilled ? "bg-green-900/20 border-green-800/50" : "bg-neutral-800/50 border-neutral-800"
+                    obj.fulfilled ? "bg-status-positive/10 border-status-positive/30" : "bg-surface-2 border-border"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -138,22 +135,22 @@ export default function ObjectivesPage() {
                       <Badge variant={obj.fulfilled ? "default" : "secondary"}>
                         {obj.fulfilled ? "Met" : "Pending"}
                       </Badge>
-                      <p className={`text-sm font-bold mt-1 ${obj.direction === "we_receive_if_met" ? "text-green-400" : "text-amber-400"}`}>
+                      <p className={`text-sm font-bold mt-1 tabular-nums ${obj.direction === "we_receive_if_met" ? "text-status-positive" : "text-status-warning"}`}>
                         {obj.direction === "we_receive_if_met" ? "+" : ""}€{formatMoney(obj.reward_amount)}
                       </p>
                     </div>
                   </div>
                   {obj.trade_id && (
-                    <Link href="/main/dashboard/trades">
-                      <span className="text-xs text-primary hover:underline">View trade →</span>
+                    <Link href="/main/dashboard/trades" className="text-xs text-accent hover:text-accent/80 transition-colors duration-150">
+                      View trade →
                     </Link>
                   )}
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

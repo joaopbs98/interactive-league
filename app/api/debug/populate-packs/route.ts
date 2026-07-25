@@ -1,9 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
+import { isDebugWriteAllowed } from "@/lib/security/productionGates.mjs";
 
 export async function POST() {
   try {
+    if (!isDebugWriteAllowed(process.env.NODE_ENV)) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const supabase = await createServerClient();
     const {
       data: { user },

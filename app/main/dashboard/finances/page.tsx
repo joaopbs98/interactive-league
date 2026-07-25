@@ -1,19 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLeague } from "@/contexts/LeagueContext";
 import {
-  Loader2,
-  DollarSign,
-  Wallet,
-  TrendingUp,
-  Percent,
-  Award,
   Briefcase,
+  BarChart3,
+  Users,
+  ArrowRight,
+  Receipt,
+  Trophy,
 } from "lucide-react";
 import Link from "next/link";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 type Transaction = {
   id: string;
@@ -51,9 +51,10 @@ type FinancesData = {
 
 function formatMoney(amount: number): string {
   const abs = Math.abs(amount);
-  if (abs >= 1_000_000) return `$${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `$${(abs / 1_000).toFixed(0)}K`;
-  return `$${abs.toLocaleString()}`;
+  const sign = amount < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(0)}K`;
+  return `${sign}$${abs.toLocaleString()}`;
 }
 
 export default function FinancesPage() {
@@ -123,165 +124,234 @@ export default function FinancesPage() {
 
   const totalIncome = Object.values(incomeByReason).reduce((a, b) => a + b, 0);
   const totalExpense = Object.values(expenseByReason).reduce((a, b) => a + b, 0);
+  const net = totalIncome - totalExpense;
+  const maxCategoryAmt = Math.max(1, ...Object.values(incomeByReason), ...Object.values(expenseByReason));
+
+  const committedPct = finances.totalBudget > 0 ? (finances.committedToWages / finances.totalBudget) * 100 : 0;
+  const remainingPct = finances.totalBudget > 0 ? (finances.remainingBudget / finances.totalBudget) * 100 : 0;
+  const budgetHealthy = finances.remainingBudget >= finances.totalBudget * 0.15;
+
+  const topEarners = [...(wageBreakdown.players || [])]
+    .sort((a, b) => b.base_wage - a.base_wage)
+    .slice(0, 5);
+
+  const recentTransactions = [...transactions]
+    .sort((a, b) => new Date(b.date || b.created_at).getTime() - new Date(a.date || a.created_at).getTime())
+    .slice(0, 5);
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <h2 className="text-2xl font-bold">Financial Overview</h2>
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
+      <Breadcrumbs />
+      <PageHeader eyebrow="Bank & Balance" title="Financial Overview" />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-900/30">
-              <Wallet className="h-5 w-5 text-blue-400" />
-            </div>
+      {/* Hero: available balance + budget allocation */}
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="p-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground mb-1">Available Balance</p>
+            <p className="font-display text-4xl sm:text-5xl text-foreground tabular-nums">
+              {formatMoney(finances.availableBalance)}
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-6 text-right">
             <div>
               <p className="text-xs text-muted-foreground">Total Budget</p>
-              <p className="text-lg font-bold">{formatMoney(finances.totalBudget)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-900/30">
-              <DollarSign className="h-5 w-5 text-amber-400" />
+              <p className="text-base font-semibold tabular-nums">{formatMoney(finances.totalBudget)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Wage Bill</p>
-              <p className="text-lg font-bold">{formatMoney(finances.totalWageBill)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-green-900/30">
-              <TrendingUp className="h-5 w-5 text-green-400" />
+              <p className="text-base font-semibold tabular-nums">{formatMoney(finances.totalWageBill)}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Available Balance</p>
-              <p className="text-lg font-bold text-green-400">{formatMoney(finances.availableBalance)}</p>
+              <p className="text-xs text-muted-foreground">Remaining</p>
+              <p className={`text-base font-semibold tabular-nums ${budgetHealthy ? "text-status-positive" : "text-status-warning"}`}>
+                {formatMoney(finances.remainingBudget)}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-900/30">
-              <Briefcase className="h-5 w-5 text-purple-400" />
+          </div>
+        </div>
+        <div className="px-6 pb-6">
+          <div className="h-2.5 rounded-full bg-surface-3 overflow-hidden flex">
+            <div className="h-full bg-accent" style={{ width: `${Math.min(100, committedPct)}%` }} />
+            <div
+              className={`h-full ${budgetHealthy ? "bg-status-positive/60" : "bg-status-warning/60"}`}
+              style={{ width: `${Math.min(100 - committedPct, remainingPct)}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-accent" /> Committed to wages ({committedPct.toFixed(0)}%)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${budgetHealthy ? "bg-status-positive/60" : "bg-status-warning/60"}`} />
+              Remaining ({remainingPct.toFixed(0)}%)
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* Secondary stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "Sponsor Income", value: formatMoney(sponsorIncome), icon: Briefcase },
+          { label: "Prize Money", value: formatMoney(prizeMoney), icon: Trophy },
+          { label: "Merch Share", value: `${team.merchPercentage ?? 0}%`, icon: Receipt },
+          { label: "Net This Season", value: formatMoney(net), icon: BarChart3, tone: net >= 0 ? "positive" : "negative" },
+        ].map(({ label, value, icon: Icon, tone }) => (
+          <div key={label} className="rounded-lg border border-border bg-surface p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-accent-muted flex items-center justify-center shrink-0">
+              <Icon className="h-4 w-4 text-accent" />
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Sponsor Income</p>
-              <p className="text-lg font-bold text-green-400">{formatMoney(sponsorIncome)}</p>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground truncate">{label}</p>
+              <p
+                className={`text-base font-bold tabular-nums ${
+                  tone === "positive" ? "text-status-positive" : tone === "negative" ? "text-status-negative" : ""
+                }`}
+              >
+                {value}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-slate-700/30">
-              <Percent className="h-5 w-5 text-slate-300" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Merch %</p>
-              <p className="text-lg font-bold">{team.merchPercentage ?? 0}%</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-yellow-900/30">
-              <Award className="h-5 w-5 text-yellow-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Prize Money</p>
-              <p className="text-lg font-bold text-green-400">{formatMoney(prizeMoney)}</p>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardHeader>
-            <CardTitle className="text-lg">Income vs Expenses by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {Object.keys(incomeByReason).length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-green-400 mb-2">Income</p>
-                  <div className="space-y-2">
-                    {Object.entries(incomeByReason).map(([reason, amt]) => (
-                      <div key={reason} className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{reason}</span>
-                        <span className="font-medium text-green-400">{formatMoney(amt)}</span>
-                      </div>
-                    ))}
+        <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Income vs Expenses by Category
+            </h2>
+          </div>
+          <div className="p-5 space-y-4">
+            {Object.entries(incomeByReason)
+              .sort((a, b) => b[1] - a[1])
+              .map(([reason, amt]) => (
+                <div key={reason} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{reason}</span>
+                    <span className="font-medium text-status-positive tabular-nums">{formatMoney(amt)}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                    <div className="h-full bg-status-positive/70 rounded-full" style={{ width: `${(amt / maxCategoryAmt) * 100}%` }} />
                   </div>
                 </div>
-              )}
-              {Object.keys(expenseByReason).length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-red-400 mb-2">Expenses</p>
-                  <div className="space-y-2">
-                    {Object.entries(expenseByReason).map(([reason, amt]) => (
-                      <div key={reason} className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{reason}</span>
-                        <span className="font-medium text-red-400">{formatMoney(amt)}</span>
-                      </div>
-                    ))}
+              ))}
+            {Object.entries(expenseByReason)
+              .sort((a, b) => b[1] - a[1])
+              .map(([reason, amt]) => (
+                <div key={reason} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{reason}</span>
+                    <span className="font-medium text-status-negative tabular-nums">{formatMoney(amt)}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                    <div className="h-full bg-status-negative/70 rounded-full" style={{ width: `${(amt / maxCategoryAmt) * 100}%` }} />
                   </div>
                 </div>
-              )}
-              {Object.keys(incomeByReason).length === 0 && Object.keys(expenseByReason).length === 0 && (
-                <p className="text-muted-foreground text-sm">No transaction categories yet.</p>
-              )}
-              <div className="pt-2 border-t border-neutral-700 flex justify-between font-medium">
-                <span>Net</span>
-                <span className={totalIncome - totalExpense >= 0 ? "text-green-400" : "text-red-400"}>
-                  {totalIncome - totalExpense >= 0 ? "+" : "-"}
-                  {formatMoney(Math.abs(totalIncome - totalExpense))}
-                </span>
-              </div>
+              ))}
+            {Object.keys(incomeByReason).length === 0 && Object.keys(expenseByReason).length === 0 && (
+              <p className="text-muted-foreground text-sm">No transaction categories yet.</p>
+            )}
+            <div className="pt-3 border-t border-border flex justify-between font-medium">
+              <span>Net</span>
+              <span className={`tabular-nums ${net >= 0 ? "text-status-positive" : "text-status-negative"}`}>
+                {net >= 0 ? "+" : "-"}
+                {formatMoney(Math.abs(net))}
+              </span>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardHeader>
-            <CardTitle className="text-lg">Wage Breakdown by Position</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
+        <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden" style={{ animationDelay: "40ms" }}>
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Wages
+            </h2>
+          </div>
+          <div className="p-5 space-y-5">
+            <div className="space-y-3">
               {(["GK", "DEF", "MID", "FWD"] as const).map((pos) => {
                 const amt = wageBreakdown.byPosition?.[pos] ?? 0;
                 const pct = wageBreakdown.total > 0 ? (amt / wageBreakdown.total) * 100 : 0;
                 return (
-                  <div key={pos} className="flex items-center gap-2">
-                    <span className="w-12 text-sm text-muted-foreground">{pos}</span>
-                    <div className="flex-1 h-4 rounded bg-neutral-800 overflow-hidden">
-                      <div
-                        className="h-full bg-amber-600/80 rounded"
-                        style={{ width: `${pct}%` }}
-                      />
+                  <div key={pos} className="flex items-center gap-3">
+                    <span className="w-10 text-sm text-muted-foreground">{pos}</span>
+                    <div className="flex-1 h-2 rounded-full bg-surface-3 overflow-hidden">
+                      <div className="h-full bg-accent rounded-full" style={{ width: `${pct}%` }} />
                     </div>
-                    <span className="text-sm font-medium w-20 text-right">{formatMoney(amt)}</span>
+                    <span className="text-sm font-medium w-20 text-right tabular-nums">{formatMoney(amt)}</span>
                   </div>
                 );
               })}
             </div>
-            <p className="text-xs text-muted-foreground mt-4">
-              Total wage bill: {formatMoney(wageBreakdown.total)}
+
+            {topEarners.length > 0 && (
+              <div className="pt-4 border-t border-border">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">Top Earners</p>
+                <div className="space-y-1.5">
+                  {topEarners.map((p) => (
+                    <div key={p.player_name} className="flex items-center justify-between text-sm">
+                      <span className="text-foreground truncate">{p.player_name}</span>
+                      <span className="text-muted-foreground tabular-nums">{formatMoney(p.base_wage)}/wk</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground pt-3 border-t border-border">
+              Total wage bill: <span className="font-medium text-foreground">{formatMoney(wageBreakdown.total)}</span>
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
 
-      <div className="flex gap-2">
-        <Link href="/main/dashboard/transactions">
-          <span className="text-sm text-primary hover:underline">View full transaction history →</span>
-        </Link>
-        <Link href="/main/dashboard/sponsors">
-          <span className="text-sm text-primary hover:underline">Sponsors →</span>
-        </Link>
-      </div>
+      {/* Recent transactions */}
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <Receipt className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Recent Transactions
+          </h2>
+          <Link
+            href="/main/dashboard/transactions"
+            className="group ml-auto flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors duration-150"
+          >
+            View all
+            <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform duration-150" />
+          </Link>
+        </div>
+        <div className="divide-y divide-border">
+          {recentTransactions.length === 0 && (
+            <p className="px-5 py-6 text-sm text-muted-foreground text-center">No transactions yet.</p>
+          )}
+          {recentTransactions.map((t) => (
+            <div key={t.id} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
+              <div className="min-w-0">
+                <p className="text-foreground truncate">{t.reason || t.description || "Transaction"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(t.date || t.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <span className={`font-medium tabular-nums shrink-0 ${t.amount >= 0 ? "text-status-positive" : "text-status-negative"}`}>
+                {t.amount >= 0 ? "+" : ""}
+                {formatMoney(t.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <Link
+        href="/main/dashboard/sponsors"
+        className="group flex items-center gap-1.5 text-sm text-accent hover:text-accent/80 transition-colors duration-150 self-start"
+      >
+        Manage sponsors
+        <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform duration-150" />
+      </Link>
     </div>
   );
 }

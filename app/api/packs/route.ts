@@ -242,7 +242,9 @@ export async function POST(request: NextRequest) {
       // First try to find players with the exact position
       let { data: availablePlayers, error: playerQueryError } = await supabase
         .from('player')
-        .select('player_id, name, full_name, overall_rating, positions, image, country_name')
+        .select('player_id, name, full_name, overall_rating, positions, image, country_name, country_flag')
+        .is('source_league_id', null)
+        .not('player_id', 'like', 'custom_%')
         .eq('overall_rating', targetRating)
         .ilike('positions', `%${position}%`)
         .not('player_id', 'in', `(
@@ -263,7 +265,9 @@ export async function POST(request: NextRequest) {
         
         const { data: anyPlayers, error: anyPlayerError } = await supabase
           .from('player')
-          .select('player_id, name, full_name, overall_rating, positions, image, country_name')
+          .select('player_id, name, full_name, overall_rating, positions, image, country_name, country_flag')
+          .is('source_league_id', null)
+          .not('player_id', 'like', 'custom_%')
           .eq('overall_rating', targetRating)
           .not('player_id', 'in', `(
             SELECT DISTINCT player_id 
@@ -286,7 +290,9 @@ export async function POST(request: NextRequest) {
           
           const { data: similarPlayers, error: similarError } = await supabase
             .from('player')
-            .select('player_id, name, full_name, overall_rating, positions, image, country_name')
+            .select('player_id, name, full_name, overall_rating, positions, image, country_name, country_flag')
+            .is('source_league_id', null)
+            .not('player_id', 'like', 'custom_%')
             .gte('overall_rating', targetRating - 2)
             .lte('overall_rating', targetRating + 2)
             .not('player_id', 'in', `(
@@ -446,7 +452,8 @@ export async function POST(request: NextRequest) {
         overall_rating: p.overall_rating,
         positions: p.positions,
         image: (p as { image?: string }).image,
-        country_name: (p as { country_name?: string }).country_name
+        country_name: (p as { country_name?: string }).country_name,
+        country_flag: (p as { country_flag?: string }).country_flag
       })),
       leaguePlayers: leaguePlayers,
       newBudget: team.budget - pack.price,
@@ -478,4 +485,4 @@ function selectRatingFromOdds(packOdds: any[]): number {
   
   // Fallback to highest rating if something goes wrong
   return packOdds[0]?.rating || 60;
-} 
+}

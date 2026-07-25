@@ -2,17 +2,17 @@ export type Position = { x: number; y: number; label: string };
 
 export const formationPositions: Record<string, Position[]> = {
   "3-1-4-2": [
-    { x: 50, y: 90, label: "GK" },
-    { x: 25, y: 75, label: "CB" },
-    { x: 50, y: 75, label: "CB" },
-    { x: 75, y: 75, label: "CB" },
-    { x: 50, y: 60, label: "CDM" },
-    { x: 15, y: 40, label: "LM" },
-    { x: 85, y: 40, label: "RM" },
-    { x: 35, y: 45, label: "CM" },
-    { x: 65, y: 45, label: "CM" },
-    { x: 40, y: 10, label: "ST" },
-    { x: 60, y: 10, label: "ST" },
+    { x: 50, y: 89, label: "GK" },
+    { x: 24, y: 74, label: "CB" },
+    { x: 50, y: 76, label: "CB" },
+    { x: 76, y: 74, label: "CB" },
+    { x: 50, y: 59, label: "CDM" },
+    { x: 14, y: 42, label: "LM" },
+    { x: 86, y: 42, label: "RM" },
+    { x: 38, y: 43, label: "CM" },
+    { x: 62, y: 43, label: "CM" },
+    { x: 38, y: 13, label: "ST" },
+    { x: 62, y: 13, label: "ST" },
   ],
   "3-4-1-2": [
     { x: 50, y: 90, label: "GK" },

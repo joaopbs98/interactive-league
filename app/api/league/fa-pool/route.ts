@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { isLeagueHost } from "@/lib/hostUtils";
+import { visiblePlayerScope } from "@/lib/playerScopeRules.mjs";
 
 async function getServiceSupabase() {
   return createServiceClient(
@@ -44,6 +45,8 @@ export async function GET(request: NextRequest) {
       let q = serviceSupabase
         .from("player")
         .select("player_id, name, full_name, positions, overall_rating")
+        .or(visiblePlayerScope(leagueId))
+        .not("player_id", "like", "custom_%")
         .order("overall_rating", { ascending: false })
         .limit(50);
       if (search.trim()) {
@@ -184,6 +187,8 @@ export async function POST(request: NextRequest) {
         const { data: p } = await serviceSupabase
           .from("player")
           .select("player_id, name, full_name, image, description, positions, overall_rating")
+          .or(visiblePlayerScope(leagueId))
+          .not("player_id", "like", "custom_%")
           .eq("player_id", playerId)
           .single();
 

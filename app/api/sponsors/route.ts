@@ -136,6 +136,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch sponsors" }, { status: 500 });
     }
 
+    // The league hasn't gone through the host's "set sponsors for contract window" step
+    // (no league_sponsors rows yet), but we still know the league (and season) here, so
+    // enrich with the season-specific term instead of falling back to the stale generic
+    // sponsors.base_payment — that field can be years out of date vs. what actually gets
+    // paid (sponsor_season_terms), and previously this branch showed it unlabeled.
+    if (leagueId && sponsors && sponsors.length > 0) {
+      const { data: league } = await serviceSupabase
+        .from("leagues")
+        .select("season")
+        .eq("id", leagueId)
+        .single();
+      const season = league?.season ?? 1;
+
+      const { data: terms } = await serviceSupabase
+        .from("sponsor_season_terms")
+        .select("sponsor_id, base_payment, bonus_amount, bonus_condition_code, bonus_merch_pct, payout_type")
+        .in("sponsor_id", sponsors.map((s) => s.id))
+        .eq("season", season);
+
+      const termMap = new Map((terms || []).map((t) => [t.sponsor_id, t]));
+      const enrichedFallback = sponsors.map((s) => {
+        const t = termMap.get(s.id);
+        return {
+          ...s,
+          season_base_payment: t?.base_payment ?? s.base_payment,
+          season_bonus_amount: t?.bonus_amount ?? s.bonus_amount,
+          season_bonus_condition: t?.bonus_condition_code ?? s.bonus_condition,
+          bonus_merch_pct: t?.bonus_merch_pct,
+          payout_type: t?.payout_type ?? "fixed",
+          season,
+        };
+      });
+      return NextResponse.json({ sponsors: enrichedFallback, season });
+    }
+
     return NextResponse.json({ sponsors: sponsors || [] });
   } catch (err: unknown) {
     console.error("Sponsors API error:", err);

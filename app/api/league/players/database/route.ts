@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { visiblePlayerScope } from "@/lib/playerScopeRules.mjs";
+
+const DEFAULT_PAGE_SIZE = 24;
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,12 +34,107 @@ export async function GET(request: NextRequest) {
     const ageMin = searchParams.get("ageMin");
     const ageMax = searchParams.get("ageMax");
 
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE));
+
     const serviceSupabase = createServiceClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Fetch all league players with team info
+    // Fetch teams in league for filter dropdown (always needed)
+    const { data: teams } = await serviceSupabase
+      .from("teams")
+      .select("id, name")
+      .eq("league_id", leagueId)
+      .order("name");
+
+    if (teamId === "free") {
+      // "Free Agents" = every player in the master catalog NOT currently
+      // rostered to a club (team_id set) in this league.
+      const { data: rosteredRows } = await serviceSupabase
+        .from("league_players")
+        .select("player_id")
+        .eq("league_id", leagueId)
+        .not("team_id", "is", null);
+
+      const rosteredIds = (rosteredRows || []).map((r) => r.player_id).filter(Boolean);
+
+      let query = serviceSupabase
+        .from("player")
+        .select(
+          "player_id, full_name, name, positions, overall_rating, image, value, wage, country_name, country_flag",
+          { count: "exact" }
+        )
+        .or(visiblePlayerScope(leagueId))
+        .not("player_id", "like", "custom_%");
+
+      if (rosteredIds.length > 0) {
+        query = query.not("player_id", "in", `(${rosteredIds.join(",")})`);
+      }
+
+      if (search) {
+        const s = search.replace(/[%,]/g, "");
+        query = query.or(
+          `full_name.ilike.%${s}%,name.ilike.%${s}%,positions.ilike.%${s}%`
+        );
+      }
+
+      if (position) {
+        query = query.ilike("positions", `%${position}%`);
+      }
+
+      if (positions.length > 0) {
+        query = query.or(
+          positions.map((pos) => `positions.ilike.%${pos}%`).join(",")
+        );
+      }
+
+      if (ratingMin) query = query.gte("overall_rating", parseInt(ratingMin, 10));
+      if (ratingMax) query = query.lte("overall_rating", parseInt(ratingMax, 10));
+
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      const { data: rows, error: rowsError, count } = await query
+        .order("overall_rating", { ascending: false })
+        .range(from, to);
+
+      if (rowsError) {
+        return NextResponse.json(
+          { error: rowsError.message, success: false },
+          { status: 500 }
+        );
+      }
+
+      const data = (rows || []).map((p) => ({
+        id: p.player_id,
+        player_id: p.player_id,
+        player_name: p.name,
+        full_name: p.full_name || p.name,
+        positions: p.positions,
+        rating: p.overall_rating,
+        overall_rating: p.overall_rating,
+        team_id: null,
+        team_name: "Free Agent",
+        image: p.image,
+        value: parseNumeric(p.value),
+        wage: parseNumeric(p.wage),
+        country_name: p.country_name,
+        country_flag: p.country_flag,
+      }));
+
+      return NextResponse.json({
+        success: true,
+        data,
+        total: count ?? data.length,
+        page,
+        pageSize,
+        teams: teams || [],
+      });
+    }
+
+    // Rostered players (own team / other team / all teams) - sourced from league_players
     let query = serviceSupabase
       .from("league_players")
       .select(`
@@ -50,23 +148,17 @@ export async function GET(request: NextRequest) {
         image,
         league_id
       `)
-      .eq("league_id", leagueId);
+      .eq("league_id", leagueId)
+      .not("team_id", "is", null);
 
-    // Apply team filter
     if (teamId) {
-      if (teamId === "free") {
-        query = query.is("team_id", null);
-      } else {
-        query = query.eq("team_id", teamId);
-      }
+      query = query.eq("team_id", teamId);
     }
 
-    // Apply position filter (primary position contains)
     if (position) {
       query = query.ilike("positions", `%${position}%`);
     }
 
-    // Rating range
     if (ratingMin) query = query.gte("rating", parseInt(ratingMin, 10));
     if (ratingMax) query = query.lte("rating", parseInt(ratingMax, 10));
 
@@ -86,19 +178,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: [],
-        teams: [],
+        total: 0,
+        page,
+        pageSize,
+        teams: teams || [],
       });
     }
 
-    // Fetch player details from player table (value, wage, age, etc.)
-    let playerQuery = serviceSupabase
+    // Fetch player details from player table (value, wage, etc.)
+    const { data: playerDetails, error: playerError } = await serviceSupabase
       .from("player")
-      .select(
-        "player_id, full_name, value, wage, age, overall_rating, positions"
-      )
+      .select("player_id, full_name, value, wage, overall_rating, positions, country_name, country_flag")
       .in("player_id", playerIds);
-
-    const { data: playerDetails, error: playerError } = await playerQuery;
 
     if (playerError) {
       console.error("Player details error:", playerError);
@@ -108,23 +199,16 @@ export async function GET(request: NextRequest) {
       (playerDetails || []).map((p) => [p.player_id, p])
     );
 
-    // Fetch teams in league for filter dropdown
-    const { data: teams } = await serviceSupabase
-      .from("teams")
-      .select("id, name")
-      .eq("league_id", leagueId)
-      .order("name");
-
-    // Merge and build result
     let result = (leaguePlayers || []).map((lp: any) => {
-      const pd = (playerMap.get(lp.player_id) || {}) as { full_name?: string; value?: number; wage?: number; age?: number; overall_rating?: number };
+      const pd = (playerMap.get(lp.player_id) || {}) as { full_name?: string; value?: string; wage?: string; overall_rating?: number; country_name?: string; country_flag?: string };
       return {
         ...lp,
         full_name: lp.full_name || pd.full_name || lp.player_name,
-        value: pd.value,
-        wage: pd.wage,
-        age: pd.age,
+        value: parseNumeric(pd.value),
+        wage: parseNumeric(pd.wage),
         overall_rating: pd.overall_rating ?? lp.rating,
+        country_name: pd.country_name,
+        country_flag: pd.country_flag,
         team_name: null as string | null,
       };
     });
@@ -173,16 +257,20 @@ export async function GET(request: NextRequest) {
     if (wageMax != null && wageMax !== "") {
       result = result.filter((p) => (p.wage ?? 0) <= parseInt(wageMax, 10));
     }
-    if (ageMin != null && ageMin !== "") {
-      result = result.filter((p) => (p.age ?? 0) >= parseInt(ageMin, 10));
-    }
-    if (ageMax != null && ageMax !== "") {
-      result = result.filter((p) => (p.age ?? 99) <= parseInt(ageMax, 10));
-    }
+    // Note: age filters are not applied - the player table has no age column.
+    void ageMin;
+    void ageMax;
+
+    const total = result.length;
+    const from = (page - 1) * pageSize;
+    const paged = result.slice(from, from + pageSize);
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: paged,
+      total,
+      page,
+      pageSize,
       teams: teams || [],
     });
   } catch (error: any) {
@@ -192,4 +280,10 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function parseNumeric(raw: string | number | null | undefined): number | undefined {
+  if (raw == null || raw === "") return undefined;
+  const parsed = parseInt(String(raw).replace(/[^0-9]/g, ""), 10);
+  return isNaN(parsed) ? undefined : parsed;
 }

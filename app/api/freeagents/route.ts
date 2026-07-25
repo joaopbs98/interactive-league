@@ -228,15 +228,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const { count } = await serviceSupabase
-        .from('league_players')
-        .select('*', { count: 'exact', head: true })
-        .eq('team_id', teamId);
-
-      if ((count || 0) >= 23) {
-        return NextResponse.json({ success: false, error: 'Roster is full (23 players max)' }, { status: 400 });
-      }
-
       const { data: faPlayer } = await serviceSupabase
         .from('league_players')
         .select('id, player_id')
@@ -294,16 +285,6 @@ export async function POST(request: NextRequest) {
     if (action === 'sign') {
       if (!playerId) {
         return NextResponse.json({ success: false, error: 'playerId required' }, { status: 400 });
-      }
-
-      // Roster cap check
-      const { count } = await serviceSupabase
-        .from('league_players')
-        .select('*', { count: 'exact', head: true })
-        .eq('team_id', teamId);
-
-      if ((count || 0) >= 23) {
-        return NextResponse.json({ success: false, error: 'Roster is full (23 players max)' }, { status: 400 });
       }
 
       // Check player is a free agent in this league

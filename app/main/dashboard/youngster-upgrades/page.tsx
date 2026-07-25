@@ -3,15 +3,14 @@
 import { useState, useEffect } from "react";
 import { useLeague } from "@/contexts/LeagueContext";
 import { getYoungsterUpgrade } from "@/lib/youngsterLogic";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Loader2, ArrowLeft, TrendingUp, Users } from "lucide-react";
+import { Loader2, ArrowLeft, Users } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import Link from "next/link";
-import { toast } from "sonner";
-import { Toaster } from "sonner";
+import { toast, Toaster } from "sonner";
 
 type YoungsterRow = {
   leaguePlayerId: string;
@@ -218,32 +217,33 @@ export default function YoungsterUpgradesPage() {
   }
 
   return (
-    <div className="p-8 flex flex-col gap-6">
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
       <Toaster position="top-center" richColors />
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <TrendingUp className="h-7 w-7" /> Youngster Upgrades
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Season {season} · Enter games played and average ratings per competition
-          </p>
-        </div>
-        <Link href="/main/dashboard/host-controls">
-          <Button variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Host Controls
-          </Button>
-        </Link>
-      </div>
+      <Breadcrumbs />
+      <PageHeader
+        eyebrow="League"
+        title="Youngster Upgrades"
+        subtitle={`Season ${season} · Enter games played and average ratings per competition`}
+        actions={
+          <Link href="/main/dashboard/host-controls">
+            <Button variant="outline">
+              <ArrowLeft className="h-4 w-4 mr-2" /> Host Controls
+            </Button>
+          </Link>
+        }
+      />
 
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Youngsters</CardTitle>
-          <CardDescription>
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Youngsters</h2>
+          </div>
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-muted-foreground mb-4">
             Host enters games and avg ratings (domestic, USC, UCL/UEL/UECL GS/KO). Adj. Avg = mean of entered avgs. Min 8 games for avg-based upgrade.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
           {youngsters.length === 0 ? (
             <p className="text-muted-foreground">No youngsters in this league.</p>
           ) : (
@@ -259,7 +259,7 @@ export default function YoungsterUpgradesPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-neutral-700">
+                    <tr className="border-b border-border">
                       <th className="text-left p-2">Player</th>
                       <th className="text-left p-2">Team</th>
                       <th className="text-left p-2">Pos</th>
@@ -281,7 +281,7 @@ export default function YoungsterUpgradesPage() {
                       const delta = getYoungsterUpgrade(row.baseRating, games, adjAvg);
                       const newRating = Math.min(99, Math.max(40, row.baseRating + delta));
                       return (
-                        <tr key={row.leaguePlayerId} className="border-b border-neutral-800">
+                        <tr key={row.leaguePlayerId} className="border-b border-border">
                           <td className="p-2 font-medium">{row.playerName}</td>
                           <td className="p-2">{row.teamAcronym || row.teamName || "—"}</td>
                           <td className="p-2">{row.positions}</td>
@@ -312,7 +312,7 @@ export default function YoungsterUpgradesPage() {
                           </td>
                           <td className="p-2 text-muted-foreground">{adjAvg > 0 ? adjAvg.toFixed(2) : "—"}</td>
                           <td className="p-2">
-                            <span className={delta >= 0 ? "text-green-500" : "text-red-500"}>
+                            <span className={delta >= 0 ? "text-status-positive" : "text-status-negative"}>
                               {delta >= 0 ? "+" : ""}{delta}
                             </span>
                           </td>
@@ -335,8 +335,8 @@ export default function YoungsterUpgradesPage() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

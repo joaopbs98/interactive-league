@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -11,8 +10,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Loader2, ArrowUpRight, ArrowDownRight, Search } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Search } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 type TransferItem = {
   id: string;
@@ -80,132 +81,127 @@ export default function TransferHistoryPage() {
   }
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <h2 className="text-2xl font-bold">Transfer History</h2>
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
+      <Breadcrumbs />
+      <PageHeader eyebrow="Transfer Hub" title="Transfer History" />
 
-      <div className="flex flex-wrap gap-4 items-center">
-        <div className="relative w-48">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by player..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="flex flex-wrap gap-3 items-center p-5">
+          <div className="relative w-48">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by player..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Select value={season} onValueChange={setSeason}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Season" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All seasons</SelectItem>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => (
+                <SelectItem key={s} value={String(s)}>
+                  Season {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="in">Incoming</SelectItem>
+              <SelectItem value="out">Outgoing</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={season} onValueChange={setSeason}>
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="Season" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All seasons</SelectItem>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => (
-              <SelectItem key={s} value={String(s)}>
-                Season {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="in">Incoming</SelectItem>
-            <SelectItem value="out">Outgoing</SelectItem>
-          </SelectContent>
-        </Select>
+      </section>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs text-muted-foreground">Total Received</p>
+          <p className="text-lg font-bold text-status-positive tabular-nums">
+            {formatMoney(summary.totalReceived)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs text-muted-foreground">Total Spent</p>
+          <p className="text-lg font-bold text-status-negative tabular-nums">
+            {formatMoney(summary.totalSpent)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs text-muted-foreground">Net</p>
+          <p
+            className={`text-lg font-bold tabular-nums ${
+              summary.net >= 0 ? "text-status-positive" : "text-status-negative"
+            }`}
+          >
+            {summary.net >= 0 ? "+" : "-"}
+            {formatMoney(Math.abs(summary.net))}
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Total Received</p>
-            <p className="text-lg font-bold text-green-400">
-              {formatMoney(summary.totalReceived)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Total Spent</p>
-            <p className="text-lg font-bold text-red-400">
-              {formatMoney(summary.totalSpent)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Net</p>
-            <p
-              className={`text-lg font-bold ${
-                summary.net >= 0 ? "text-green-400" : "text-red-400"
-              }`}
-            >
-              {summary.net >= 0 ? "+" : "-"}
-              {formatMoney(Math.abs(summary.net))}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader>
-          <CardTitle className="text-lg">History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="p-6">
-              <PageSkeleton variant="table" rows={8} />
-            </div>
-          ) : items.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-8">
-              No transfer activity yet.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-neutral-800/50 hover:bg-neutral-800"
-                >
-                  <div className="flex items-center gap-3">
-                    {item.direction === "in" ? (
-                      <ArrowUpRight className="h-4 w-4 text-green-400" />
-                    ) : (
-                      <ArrowDownRight className="h-4 w-4 text-red-400" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium">
-                        {item.playerName || item.description || item.reason}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.type} · Season {item.season}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p
-                      className={`font-bold ${
-                        item.direction === "in"
-                          ? "text-green-400"
-                          : "text-red-400"
-                      }`}
-                    >
-                      {item.direction === "in" ? "+" : "-"}
-                      {formatMoney(Math.abs(item.amount))}
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden" style={{ animationDelay: "40ms" }}>
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">History</h2>
+        </div>
+        {loading ? (
+          <div className="p-6">
+            <PageSkeleton variant="table" rows={8} />
+          </div>
+        ) : items.length === 0 ? (
+          <p className="text-muted-foreground text-sm text-center py-8">
+            No transfer activity yet.
+          </p>
+        ) : (
+          <div className="divide-y divide-border">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between px-5 py-3 hover:bg-surface-2 transition-colors duration-150"
+              >
+                <div className="flex items-center gap-3">
+                  {item.direction === "in" ? (
+                    <ArrowUpRight className="h-4 w-4 text-status-positive" />
+                  ) : (
+                    <ArrowDownRight className="h-4 w-4 text-status-negative" />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium">
+                      {item.playerName || item.description || item.reason}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {new Date(item.date).toLocaleDateString()}
+                      {item.type} · Season {item.season}
                     </p>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div className="text-right">
+                  <p
+                    className={`font-bold tabular-nums ${
+                      item.direction === "in"
+                        ? "text-status-positive"
+                        : "text-status-negative"
+                    }`}
+                  >
+                    {item.direction === "in" ? "+" : "-"}
+                    {formatMoney(Math.abs(item.amount))}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(item.date).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

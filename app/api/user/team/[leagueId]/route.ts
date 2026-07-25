@@ -3,6 +3,14 @@ import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { isLeagueHost } from "@/lib/hostUtils";
 
+function mergePlayerDetails(seed: Record<string, any> | undefined, scoped: Record<string, any>): Record<string, any> {
+  const merged = { ...(seed || {}) };
+  for (const [key, value] of Object.entries(scoped)) {
+    if (value != null) merged[key] = value;
+  }
+  return merged;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ leagueId: string }> }
@@ -477,20 +485,7 @@ export async function GET(
       
       let { data: leaguePlayers, error: leaguePlayersError } = await serviceSupabase
         .from('league_players')
-        .select(`
-          id,
-          player_id,
-          player_name,
-          full_name,
-          description,
-          positions,
-          rating,
-          team_id,
-          origin_type,
-          is_youngster,
-          potential,
-          created_at
-        `)
+        .select('*')
         .eq('team_id', serviceTeam.id);
 
       if (leaguePlayersError) {
@@ -518,20 +513,7 @@ export async function GET(
       // Fetch player details from player table
       let { data: playerDetails, error: playerDetailsError } = await serviceSupabase
         .from('player')
-        .select(`
-          player_id,
-          name,
-          full_name,
-          image,
-          description,
-          positions,
-          overall_rating,
-          club_name,
-          wage,
-          value,
-          potential,
-          country_name
-        `)
+        .select('*')
         .in('player_id', playerIds);
 
       // Fetch contract wages for squad players
@@ -585,19 +567,21 @@ export async function GET(
         const injury = serviceInjuryMap.get(player.player_id);
         const playerDetail = playerDetailsMap.get(player.player_id);
         const contractWage = contractWageMap.get(player.player_id);
+        const mergedPlayer = mergePlayerDetails(playerDetail, player);
         
         return {
-          ...player,
-          name: playerDetail?.full_name || player.full_name || player.player_name, // Use full_name if available
-          image: playerDetail?.image, // Use image from player table
-          description: playerDetail?.description || player.description,
-          positions: playerDetail?.positions || player.positions,
-          overall_rating: playerDetail?.overall_rating || player.rating,
-          club_name: playerDetail?.club_name,
+          ...mergedPlayer,
+          player_id: mergedPlayer.player_id,
+          name: mergedPlayer.full_name || mergedPlayer.name || mergedPlayer.player_name,
+          image: mergedPlayer.image,
+          description: mergedPlayer.description,
+          positions: mergedPlayer.positions,
+          overall_rating: mergedPlayer.rating ?? mergedPlayer.overall_rating,
+          club_name: mergedPlayer.club_name,
           wage: contractWage ?? playerDetail?.wage,
-          value: playerDetail?.value,
-          potential: player.potential ?? playerDetail?.potential,
-          country_name: playerDetail?.country_name,
+          value: mergedPlayer.value,
+          potential: mergedPlayer.potential,
+          country_name: mergedPlayer.country_name,
           origin_type: player.origin_type,
           is_youngster: player.is_youngster ?? false,
           isInjured: !!injury,
@@ -780,20 +764,7 @@ export async function GET(
     
           let { data: leaguePlayers, error: leaguePlayersError } = await supabase
         .from('league_players')
-        .select(`
-          id,
-          player_id,
-          player_name,
-          full_name,
-          description,
-          positions,
-          rating,
-          team_id,
-          origin_type,
-          is_youngster,
-          potential,
-          created_at
-        `)
+        .select('*')
         .eq('team_id', team.id);
 
       if (leaguePlayersError) {
@@ -809,7 +780,7 @@ export async function GET(
     const playerIds = leaguePlayers?.map((p: { player_id: string }) => p.player_id) || [];
     const { data: playerDetails, error: playerDetailsError } = await supabase
       .from('player')
-      .select('player_id, name, full_name, image, description, positions, overall_rating, club_name, wage, value, potential, country_name')
+      .select('*')
       .in('player_id', playerIds);
     const playerDetailsMap = new Map();
     playerDetails?.forEach((p: { player_id: string }) => playerDetailsMap.set(p.player_id, p));
@@ -853,18 +824,20 @@ export async function GET(
       const injury = injuryMap.get(player.player_id);
       const playerDetail = playerDetailsMap.get(player.player_id);
       const contractWage = contractWageMap.get(player.player_id);
+      const mergedPlayer = mergePlayerDetails(playerDetail, player);
       return {
-        ...player,
-        name: playerDetail?.full_name || player.full_name || player.player_name,
-        image: playerDetail?.image,
-        description: playerDetail?.description || player.description,
-        positions: playerDetail?.positions || player.positions,
-        overall_rating: playerDetail?.overall_rating ?? player.rating,
-        club_name: playerDetail?.club_name,
+        ...mergedPlayer,
+        player_id: mergedPlayer.player_id,
+        name: mergedPlayer.full_name || mergedPlayer.name || mergedPlayer.player_name,
+        image: mergedPlayer.image,
+        description: mergedPlayer.description,
+        positions: mergedPlayer.positions,
+        overall_rating: mergedPlayer.rating ?? mergedPlayer.overall_rating,
+        club_name: mergedPlayer.club_name,
         wage: contractWage ?? playerDetail?.wage,
-        value: playerDetail?.value,
-        potential: player.potential ?? playerDetail?.potential,
-        country_name: playerDetail?.country_name,
+        value: mergedPlayer.value,
+        potential: mergedPlayer.potential,
+        country_name: mergedPlayer.country_name,
         origin_type: player.origin_type,
         is_youngster: player.is_youngster ?? false,
         isInjured: !!injury,
@@ -1153,4 +1126,4 @@ async function fetchDashboardData(supabase: any, leagueId: string, teamId: strin
       sponsorExpiring: false
     };
   }
-} 
+}

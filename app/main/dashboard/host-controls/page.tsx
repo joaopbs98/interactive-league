@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { useLeague } from "@/contexts/LeagueContext";
 import {
   Calendar, Users, Trophy, Settings, Play, StopCircle, Gavel,
-  AlertTriangle, ScrollText, Loader2, Shield, Zap, DollarSign, UserPlus, BarChart3, UserPlus2, Trash2, BookOpen, TrendingUp
+  AlertTriangle, ScrollText, Loader2, Shield, Zap, DollarSign, UserPlus, BarChart3, UserPlus2, Trash2, BookOpen, TrendingUp, Shuffle
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -25,6 +25,19 @@ import {
 import Link from "next/link";
 import { Toaster, toast } from "sonner";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { HostAuctionPoolCard } from "@/components/auctions/HostAuctionPoolCard";
+import { Slider } from "@/components/ui/slider";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { applySimulationPreset, SIMULATION_SETTING_BOUNDS } from "@/lib/simulation/settings.mjs";
+
+type SimulationSettingsForm = {
+  overallInfluence: number; tacticalInfluence: number; homeAdvantage: number;
+  variance: number; fogStrength: number; fatigueEffect: number;
+  injuryFrequency: number; disciplineFrequency: number; goalEnvironment: number;
+  previewRerolls: number;
+};
 
 type LeagueInfo = {
   id: string;
@@ -52,7 +65,15 @@ type LeagueInfo = {
   scheduled_supercup_this_round?: number;
 };
 
-type TeamInfo = { id: string; name: string; acronym: string };
+type TeamInfo = {
+  id: string;
+  name: string;
+  acronym: string;
+  logo_url?: string | null;
+  user_id?: string | null;
+  mock_identity_key?: string | null;
+  mock_personality?: string | null;
+};
 
 type AuditLog = {
   id: string;
@@ -72,6 +93,24 @@ type MatchRow = {
   away_team?: { name: string; acronym?: string };
 };
 
+type SimulatedMatch = {
+  matchId: string;
+  homeTeamName: string;
+  awayTeamName: string;
+  homeScore: number;
+  awayScore: number;
+  teamStats: { home: { xg: number; shots: number }; away: { xg: number; shots: number } };
+  events: Array<{ type: string; minute: number; playerId?: string; playerName?: string; secondaryPlayerName?: string; metadata?: Record<string, unknown> }>;
+};
+
+type SimulationPreview = {
+  id: string;
+  attempt: number;
+  seed: string;
+  created_at: string;
+  output_snapshot: { matches: SimulatedMatch[]; warnings?: string[] };
+};
+
 const SPONSOR_OBJECTIVES = [
   { code: "POSITION_4", label: "Top 4 finish" },
   { code: "POSITION_6", label: "Top 6 finish" },
@@ -81,6 +120,111 @@ const SPONSOR_OBJECTIVES = [
   { code: "UEL_WINNER", label: "UEL Winners" },
   { code: "UEL_GROUP", label: "UEL Group Stage" },
 ];
+
+const SETTING_LABELS: Array<[keyof SimulationSettingsForm, string, string]> = [
+  ['overallInfluence', 'Team quality', 'How strongly starting XI OVR shapes chance creation.'],
+  ['tacticalInfluence', 'Tactical execution', 'How strongly roles, attributes, and matchups shape events.'],
+  ['homeAdvantage', 'Home advantage', 'A small possession and performance edge for the home side.'],
+  ['variance', 'Match variance', 'Widens good and bad performance swings without favoring either team.'],
+  ['fogStrength', 'Funny Old Game', 'Adds upset volatility when teams have a meaningful OVR gap.'],
+  ['fatigueEffect', 'Fatigue impact', 'Controls how strongly accumulated fatigue affects execution.'],
+  ['injuryFrequency', 'Injury frequency', 'Changes the frequency of match injuries.'],
+  ['disciplineFrequency', 'Cards and fouls', 'Changes foul and card frequency.'],
+  ['goalEnvironment', 'Goal environment', 'Raises or lowers league-wide chance and goal volume.'],
+  ['previewRerolls', 'Preview rerolls', 'How many alternate matchday previews the host may generate.'],
+];
+
+function SimulationSettingsCard({ leagueId }: { leagueId: string }) {
+  const [preset, setPreset] = useState('balanced');
+  const [settings, setSettings] = useState<SimulationSettingsForm>(() => applySimulationPreset('balanced'));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  useEffect(() => {
+    if (!leagueId) return;
+    fetch(`/api/league/game?leagueId=${leagueId}&type=simulation_settings`).then((response) => response.json()).then((payload) => {
+      if (!payload.success || !payload.data) return;
+      const row = payload.data;
+      const next = {
+        overallInfluence: row.overall_influence ?? row.overallInfluence ?? 60,
+        tacticalInfluence: row.tactical_influence ?? row.tacticalInfluence ?? 25,
+        homeAdvantage: row.home_advantage ?? row.homeAdvantage ?? 5,
+        variance: row.variance ?? 50, fogStrength: row.fog_strength ?? row.fogStrength ?? 40,
+        fatigueEffect: row.fatigue_effect ?? row.fatigueEffect ?? 50,
+        injuryFrequency: row.injury_frequency ?? row.injuryFrequency ?? 50,
+        disciplineFrequency: row.discipline_frequency ?? row.disciplineFrequency ?? 50,
+        goalEnvironment: row.goal_environment ?? row.goalEnvironment ?? 50,
+        previewRerolls: row.preview_rerolls ?? row.previewRerolls ?? 1,
+      };
+      setPreset(row.preset || 'balanced');
+      setSettings(next);
+    }).finally(() => setLoading(false));
+  }, [leagueId]);
+
+  const changePreset = (value: string) => {
+    setPreset(value);
+    if (value !== 'custom') setSettings(applySimulationPreset(value));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/league/game', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_simulation_settings', leagueId, preset, settings }) });
+      const payload = await response.json();
+      if (!payload.success) throw new Error(payload.error || 'Could not save simulation settings');
+      toast.success('Simulation settings saved');
+    } catch (error: any) {
+      toast.error(error.message || 'Could not save simulation settings');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Card className="bg-surface border-border md:col-span-2">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2"><BarChart3 className="h-4 w-4" /> Simulation engine</CardTitle>
+            <CardDescription>Versioned calibration shared by every automated match in this save.</CardDescription>
+          </div>
+          <Select value={preset} onValueChange={changePreset} disabled={loading}>
+            <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="balanced">Balanced</SelectItem>
+              <SelectItem value="rating_heavy">Rating heavy</SelectItem>
+              <SelectItem value="tactical">Tactical</SelectItem>
+              <SelectItem value="custom">Custom</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg bg-surface-2 p-3"><p className="text-xs text-muted-foreground">Team quality</p><p className="text-xl font-semibold">{settings.overallInfluence}%</p></div>
+          <div className="rounded-lg bg-surface-2 p-3"><p className="text-xs text-muted-foreground">Tactical influence</p><p className="text-xl font-semibold">{settings.tacticalInfluence}%</p></div>
+          <div className="rounded-lg bg-surface-2 p-3"><p className="text-xs text-muted-foreground">Variance</p><p className="text-xl font-semibold">{settings.variance}</p></div>
+        </div>
+        <Accordion type="single" collapsible value={advancedOpen ? 'advanced' : ''} onValueChange={(value) => setAdvancedOpen(value === 'advanced')}>
+          <AccordionItem value="advanced" className="border rounded-lg px-4">
+            <AccordionTrigger>Customize advanced settings</AccordionTrigger>
+            <AccordionContent className="space-y-5 pt-2">
+              {SETTING_LABELS.map(([key, label, description]) => {
+                const [min, max] = SIMULATION_SETTING_BOUNDS[key];
+                return <div key={key} className="grid gap-2 sm:grid-cols-[180px_1fr_44px] sm:items-center">
+                  <div><Label>{label}</Label><p className="text-xs text-muted-foreground">{description}</p></div>
+                  <Slider min={min} max={max} step={1} value={[settings[key]]} onValueChange={([value]) => { setPreset('custom'); setSettings((current) => ({ ...current, [key]: value })); }} />
+                  <span className="text-right text-sm tabular-nums">{settings[key]}</span>
+                </div>;
+              })}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+        <div className="flex justify-end"><Button onClick={save} disabled={loading || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save engine settings</Button></div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function SeasonSponsorsCard({
   leagueId,
@@ -229,7 +373,7 @@ function SeasonSponsorsCard({
       <Separator />
       <div className="space-y-2">
         {!canPickSponsor && (
-          <p className="text-xs text-amber-500">
+          <p className="text-xs text-status-warning">
             Sponsors can only be changed in contract-start seasons (S2, S5, S7, S9). Current selection applies for the contract window.
           </p>
         )}
@@ -323,6 +467,27 @@ function DraftPoolCard({
     }
   };
 
+  const handleAutoPopulate = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/league/draft-pool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "auto", leagueId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(json.message || "Balanced pool generated");
+        await fetchPool();
+        onSuccess();
+      } else {
+        toast.error(json.error || "Failed");
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleRemoveFromPool = async (playerId: string) => {
     setActionLoading(true);
     try {
@@ -354,6 +519,13 @@ function DraftPoolCard({
 
   return (
     <div className="space-y-4">
+      <Button variant="outline" className="w-full" onClick={handleAutoPopulate} disabled={actionLoading}>
+        {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Users className="h-4 w-4 mr-2" />}
+        Auto-Populate Balanced Pool
+      </Button>
+      <p className="text-xs text-muted-foreground -mt-2">
+        Fills the pool with one player per team, rated to this season's pack range, one per position where available.
+      </p>
       <div className="flex gap-2">
         <Input
           placeholder="Search player name"
@@ -425,6 +597,7 @@ function FreeAgencyPoolCard({
   const [actionLoading, setActionLoading] = useState(false);
   const [addModal, setAddModal] = useState<{ player_id: string; name: string } | null>(null);
   const [addDeadline, setAddDeadline] = useState("");
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const fetchPool = async () => {
     if (!leagueId) return;
@@ -537,7 +710,7 @@ function FreeAgencyPoolCard({
   };
 
   const handleResetPool = async () => {
-    if (!confirm("Reset pool to draft? Managers will no longer see it. You can add/remove players again.")) return;
+    setResetConfirmOpen(false);
     setActionLoading(true);
     try {
       const res = await fetch("/api/league/fa-pool", {
@@ -572,7 +745,7 @@ function FreeAgencyPoolCard({
   return (
     <div className="space-y-4">
       {faPoolStatus === "confirmed" && (
-        <p className="text-xs text-green-500 font-medium">Pool confirmed – visible to managers. Resolve Free Agency when bids are in.</p>
+        <p className="text-xs text-status-positive font-medium">Pool confirmed – visible to managers. Resolve Free Agency when bids are in.</p>
       )}
       <div className="flex gap-2">
         <Input
@@ -634,11 +807,25 @@ function FreeAgencyPoolCard({
           {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Pool"}
         </Button>
         {!isDraft && (
-          <Button size="sm" variant="outline" disabled={actionLoading} onClick={handleResetPool}>
+          <Button size="sm" variant="outline" disabled={actionLoading} onClick={() => setResetConfirmOpen(true)}>
             Reset to Draft
           </Button>
         )}
       </div>
+      <Dialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset pool to draft?</DialogTitle>
+            <DialogDescription>
+              Managers will no longer see it. You can add/remove players again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleResetPool}>Reset to Draft</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!addModal} onOpenChange={(open) => !open && setAddModal(null)}>
         <DialogContent>
           <DialogHeader>
@@ -727,7 +914,7 @@ function PopulateInternationalCard({
   };
 
   return (
-    <div className="pt-2 border-t border-neutral-800 space-y-2">
+    <div className="pt-2 border-t border-border space-y-2">
       <p className="text-xs text-muted-foreground">
         Auto-fill from current season domestic standings. Allocation scales with league size (14-team basis: UCL ~43%, UECL ~29%, UEL ~29%). Super Cup (UCL vs UEL winners from previous season) from S2. Host can edit groups on Schedule.
       </p>
@@ -890,25 +1077,20 @@ export default function HostControlsPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [simulationPreview, setSimulationPreview] = useState<SimulationPreview | null>(null);
+  const [previewCompetition, setPreviewCompetition] = useState('domestic');
 
   const [fineTeamId, setFineTeamId] = useState("");
   const [fineAmount, setFineAmount] = useState("");
   const [fineReason, setFineReason] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [statusConfirm, setStatusConfirm] = useState<string | null>(null);
+  const [endSeasonConfirm, setEndSeasonConfirm] = useState(false);
 
   const leagueId = selectedLeagueId;
   const isHost = selectedTeam?.leagues?.is_host ?? (selectedTeam?.leagues?.commissioner_user_id === selectedTeam?.user_id);
   const isCommissioner = selectedTeam?.leagues?.commissioner_user_id === selectedTeam?.user_id;
-  const [addPlayerTeamId, setAddPlayerTeamId] = useState<string | null>(null);
   const [hostTeamIds, setHostTeamIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const t = params.get("addPlayer");
-      if (t) setAddPlayerTeamId(t);
-    }
-  }, []);
 
   useEffect(() => {
     if (leagueId) {
@@ -982,6 +1164,14 @@ export default function HostControlsPage() {
         } else if (action === 'add_mock_teams' && data.data?.added !== undefined) {
           successMsg = `Added ${data.data.added} mock team(s)`;
           setMessage({ type: 'success', text: successMsg });
+        } else if (action === 'upgrade_mock_teams' && data.data?.upgraded !== undefined) {
+          successMsg = data.data.upgraded > 0
+            ? `Upgraded ${data.data.upgraded} mock club${data.data.upgraded === 1 ? '' : 's'}`
+            : 'All mock clubs already have fictional identities';
+          setMessage({ type: 'success', text: successMsg });
+        } else if (action === 'diversify_mock_tactics' && data.data?.changed !== undefined) {
+          successMsg = `Assigned varied formations and tactics to ${data.data.changed} mock clubs`;
+          setMessage({ type: 'success', text: successMsg });
         } else if (action === 'generate_all_starter_squads' && data.data) {
           const { generated, total, results } = data.data;
           const failed = results?.filter((r: { success: boolean }) => !r.success) || [];
@@ -1019,6 +1209,80 @@ export default function HostControlsPage() {
     }
   };
 
+  const previewMatchday = async (competitionType: string, reroll = false) => {
+    setActionLoading(`preview_${competitionType}`);
+    setPreviewCompetition(competitionType);
+    try {
+      const res = await fetch('/api/league/game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'preview_matchday', leagueId, competitionType, reroll }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Could not create preview');
+      setSimulationPreview(data.data);
+      const successText = data.existing ? 'Existing preview restored' : 'Matchday preview ready';
+      setMessage({ type: 'success', text: successText });
+      toast.success(successText);
+    } catch (error: any) {
+      const errorText = error.message || 'Could not create preview';
+      setMessage({ type: 'error', text: errorText });
+      toast.error(errorText);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const commitMatchdayPreview = async () => {
+    if (!simulationPreview) return;
+    setActionLoading('commit_preview');
+    try {
+      const res = await fetch('/api/league/game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'commit_matchday_preview', leagueId, previewId: simulationPreview.id }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Could not commit preview');
+      setSimulationPreview(null);
+      toast.success(`${data.data?.matches_committed ?? 'Matchday'} results committed`);
+      await fetchAll();
+    } catch (error: any) {
+      toast.error(error.message || 'Could not commit preview');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const confirmStatusSwitch = async () => {
+    if (!statusConfirm) return;
+    const newStatus = statusConfirm;
+    setStatusConfirm(null);
+    setSettingsLoading(true);
+    try {
+      const res = await fetch("/api/league/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leagueId, status: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLeague((prev) => (prev ? { ...prev, status: newStatus } : null));
+        const msg = `League set to ${newStatus.replace("_", " ")}`;
+        setMessage({ type: "success", text: msg });
+        toast.success(msg);
+      } else {
+        const err = data.error || "Failed to update";
+        setMessage({ type: "error", text: err });
+        toast.error(err);
+      }
+    } catch (e: unknown) {
+      setMessage({ type: "error", text: e instanceof Error ? e.message : "Failed" });
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
   const handleApplyFine = () => {
     if (!fineTeamId || !fineAmount || !fineReason) {
       setMessage({ type: 'error', text: 'All fine fields are required' });
@@ -1035,13 +1299,13 @@ export default function HostControlsPage() {
 
   const StatusBadge = ({ status }: { status: string }) => {
     const colors: Record<string, string> = {
-      PRESEASON_SETUP: 'bg-blue-600',
-      IN_SEASON: 'bg-green-600',
-      OFFSEASON: 'bg-yellow-600',
-      SEASON_END_PROCESSING: 'bg-orange-600',
-      ARCHIVED: 'bg-neutral-600',
+      PRESEASON_SETUP: 'bg-accent',
+      IN_SEASON: 'bg-status-positive',
+      OFFSEASON: 'bg-status-warning',
+      SEASON_END_PROCESSING: 'bg-status-warning',
+      ARCHIVED: 'bg-status-neutral',
     };
-    return <Badge className={`${colors[status] || 'bg-neutral-600'} text-white`}>{status?.replace(/_/g, ' ') || 'Unknown'}</Badge>;
+    return <Badge className={`${colors[status] || 'bg-status-neutral'} text-white`}>{status?.replace(/_/g, ' ') || 'Unknown'}</Badge>;
   };
 
   if (loading) {
@@ -1055,7 +1319,7 @@ export default function HostControlsPage() {
   if (!isHost) {
     return (
       <div className="p-8">
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardContent className="p-8 text-center">
             <Shield className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
             <p className="text-lg font-medium">Host Only</p>
@@ -1069,21 +1333,25 @@ export default function HostControlsPage() {
   return (
     <div className="p-8 flex flex-col gap-6">
       <Toaster position="top-center" richColors />
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <h2 className="text-2xl font-bold">Host Controls</h2>
-        <div className="flex items-center gap-4">
-          <Link href="/main/dashboard/host-manual">
-            <Button variant="outline">
-              <BookOpen className="h-4 w-4 mr-2" /> Host Manual
-            </Button>
-          </Link>
-          {league && <StatusBadge status={league.status} />}
-        </div>
-      </div>
+      <Breadcrumbs />
+      <PageHeader
+        eyebrow="League"
+        title="Host Controls"
+        actions={
+          <div className="flex items-center gap-4">
+            <Link href="/main/dashboard/host-manual">
+              <Button variant="outline">
+                <BookOpen className="h-4 w-4 mr-2" /> Host Manual
+              </Button>
+            </Link>
+            {league && <StatusBadge status={league.status} />}
+          </div>
+        }
+      />
 
       {/* Host Teams - Commissioner only */}
       {isCommissioner && (
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Shield className="h-4 w-4" /> Host Teams</CardTitle>
             <CardDescription>Grant host rights to team owners. Toggle a team to give its owner host access.</CardDescription>
@@ -1133,14 +1401,14 @@ export default function HostControlsPage() {
       )}
 
       {message && (
-        <div className={`p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-900/30 text-green-300 border border-green-800' : 'bg-red-900/30 text-red-300 border border-red-800'}`}>
+        <div className={`p-3 rounded-lg text-sm border ${message.type === 'success' ? 'bg-status-positive/10 text-status-positive border-status-positive/30' : 'bg-status-negative/10 text-status-negative border-status-negative/30'}`}>
           {message.text}
         </div>
       )}
 
       {/* League Settings (In Season/Off Season, Transfer Window, Match Mode) */}
       {league && (
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2"><Settings className="h-5 w-5" /> League Settings</CardTitle>
             <CardDescription>Phase, transfer window and match mode. Changes apply immediately.</CardDescription>
@@ -1154,32 +1422,8 @@ export default function HostControlsPage() {
               <Switch
                 checked={league.status === "IN_SEASON"}
                 disabled={settingsLoading}
-                onCheckedChange={async (checked) => {
-                  const newStatus = checked ? "IN_SEASON" : "OFFSEASON";
-                  if (!confirm(`Switch league to ${newStatus.replace("_", " ")}? This affects sponsors, FA, trades, and match simulation.`)) return;
-                  setSettingsLoading(true);
-                  try {
-                    const res = await fetch("/api/league/settings", {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ leagueId, status: newStatus }),
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                      setLeague((prev) => (prev ? { ...prev, status: newStatus } : null));
-                      const msg = `League set to ${newStatus.replace("_", " ")}`;
-                      setMessage({ type: "success", text: msg });
-                      toast.success(msg);
-                    } else {
-                      const err = data.error || "Failed to update";
-                      setMessage({ type: "error", text: err });
-                      toast.error(err);
-                    }
-                  } catch (e: unknown) {
-                    setMessage({ type: "error", text: e instanceof Error ? e.message : "Failed" });
-                  } finally {
-                    setSettingsLoading(false);
-                  }
+                onCheckedChange={(checked) => {
+                  setStatusConfirm(checked ? "IN_SEASON" : "OFFSEASON");
                 }}
               />
             </div>
@@ -1267,7 +1511,7 @@ export default function HostControlsPage() {
 
       {/* League Info */}
       {league && (
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2"><Trophy className="h-5 w-5" /> League Info</CardTitle>
           </CardHeader>
@@ -1275,36 +1519,69 @@ export default function HostControlsPage() {
             <div><span className="text-muted-foreground">Name:</span> <span className="font-medium">{league.name}</span></div>
             <div><span className="text-muted-foreground">Season:</span> <span className="font-medium">{league.season}</span></div>
             <div><span className="text-muted-foreground">Round:</span> <span className="font-medium">{league.current_round} / {league.total_rounds || '?'}</span></div>
-            <div><span className="text-muted-foreground">Invite Code:</span> <span className="font-mono font-bold text-blue-400">{league.invite_code || 'N/A'}</span></div>
+            <div><span className="text-muted-foreground">Invite Code:</span> <span className="font-mono font-bold text-accent">{league.invite_code || 'N/A'}</span></div>
             <div><span className="text-muted-foreground">Teams:</span> <span className="font-medium">{teams.length}</span></div>
           </CardContent>
         </Card>
       )}
 
-      {/* Add Mock Teams */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      {/* Mock club testing */}
+      <Card className="bg-surface border-border">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Add Mock Teams</CardTitle>
-          <CardDescription>Fill remaining league slots with AI-controlled mock teams (no user). Each gets an auto-generated starter squad.</CardDescription>
+          <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Mock Club Testing</CardTitle>
+          <CardDescription>Fill open slots or upgrade numbered test teams into persistent fictional clubs with local badges.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button
-            onClick={() => performAction('add_mock_teams')}
-            disabled={actionLoading === 'add_mock_teams' || !!(league && teams.length >= (league.max_teams ?? 20))}
-            variant="outline"
-            className="w-full"
-          >
-            {actionLoading === 'add_mock_teams' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Users className="h-4 w-4 mr-2" />}
-            Add Mock Teams
-          </Button>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <Button
+              onClick={() => performAction('add_mock_teams')}
+              disabled={actionLoading === 'add_mock_teams' || !!(league && teams.length >= (league.max_teams ?? 20))}
+              variant="outline"
+            >
+              {actionLoading === 'add_mock_teams' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus2 className="mr-2 h-4 w-4" />}
+              Add Fictional Clubs
+            </Button>
+            <Button
+              onClick={() => performAction('upgrade_mock_teams')}
+              disabled={actionLoading === 'upgrade_mock_teams' || !teams.some((team) => team.user_id === null && !team.mock_identity_key)}
+            >
+              {actionLoading === 'upgrade_mock_teams' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shield className="mr-2 h-4 w-4" />}
+              Upgrade Numbered Clubs
+            </Button>
+            <Button
+              onClick={() => performAction('diversify_mock_tactics')}
+              disabled={actionLoading === 'diversify_mock_tactics' || !teams.some((team) => team.user_id === null)}
+              variant="outline"
+            >
+              {actionLoading === 'diversify_mock_tactics' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shuffle className="mr-2 h-4 w-4" />}
+              Diversify Tactics
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {teams.filter((team) => team.user_id === null).map((team) => (
+              <div key={team.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-2.5 py-2">
+                {team.logo_url ? (
+                  <img src={team.logo_url} alt="" className="h-7 w-7 object-contain" />
+                ) : (
+                  <div className="flex h-7 w-7 items-center justify-center rounded bg-surface-3 text-[10px] font-bold">{team.acronym}</div>
+                )}
+                <div>
+                  <p className="text-xs font-semibold leading-tight">{team.name}</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {team.mock_personality?.replace(/_/g, ' ') || 'Awaiting identity'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
           {league && teams.length >= (league.max_teams ?? 20) && (
-            <p className="text-xs text-muted-foreground mt-2">League is full</p>
+            <p className="text-xs text-muted-foreground">League is full; existing mock clubs can still be upgraded in place.</p>
           )}
         </CardContent>
       </Card>
 
       {/* Starter Squad Backfill */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card className="bg-surface border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><UserPlus className="h-4 w-4" /> Generate Starter Squads</CardTitle>
           <CardDescription>Populate teams that have no players with real EAFC players. Use this if leagues were created before the update or if starter squads failed to generate.</CardDescription>
@@ -1324,8 +1601,9 @@ export default function HostControlsPage() {
 
       {/* Game Flow Controls */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {league?.match_mode !== 'MANUAL' && <SimulationSettingsCard leagueId={leagueId ?? ''} />}
         {/* Schedule */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Calendar className="h-4 w-4" /> Schedule</CardTitle>
             <CardDescription>Generate round-robin or manually create fixtures. Full schedule management on its own page.</CardDescription>
@@ -1345,24 +1623,17 @@ export default function HostControlsPage() {
 
         {/* Simulate Matchday (SIMULATED mode only) */}
         {league?.match_mode !== 'MANUAL' && (
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2"><Play className="h-4 w-4" /> Simulate Matchday</CardTitle>
-            <CardDescription>Simulate domestic round or international matchdays separately.</CardDescription>
+            <CardTitle className="text-base flex items-center gap-2"><Play className="h-4 w-4" /> Simulation Studio</CardTitle>
+            <CardDescription>Open the dedicated match workspace to preview, inspect and commit one fixture at a time.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Button
-              onClick={() => performAction('simulate_matchday')}
-              disabled={
-                actionLoading === 'simulate_matchday' ||
-                league?.status !== 'IN_SEASON' ||
-                (league?.current_round ?? 0) > (league?.total_rounds ?? 0)
-              }
-              className="w-full bg-green-700 hover:bg-green-800"
-            >
-              {actionLoading === 'simulate_matchday' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-              Simulate Domestic Round {league?.current_round || '?'}
-            </Button>
+            <Link href={`/main/dashboard/simulation?league=${leagueId}`} className={league?.status !== 'IN_SEASON' ? 'pointer-events-none' : undefined}>
+              <Button disabled={league?.status !== 'IN_SEASON' || (league?.current_round ?? 0) > (league?.total_rounds ?? 0)} className="w-full bg-status-positive hover:bg-status-positive/90 text-black">
+                <Play className="h-4 w-4 mr-2" />Open Simulation Studio
+              </Button>
+            </Link>
             {(league?.current_round ?? 0) > (league?.total_rounds ?? 0) && (
               <p className="text-xs text-muted-foreground">
                 All domestic rounds finished. Populate international schedule (Schedule card above), verify groups on Manage Schedule, then simulate or insert international results. Run End Season when all competitions are done.
@@ -1371,61 +1642,61 @@ export default function HostControlsPage() {
             {league?.has_ucl_matches && (
               <Button
                 variant="outline"
-                onClick={() => performAction('simulate_matchday_competition', { competitionType: 'ucl' })}
+                onClick={() => previewMatchday('ucl')}
                 disabled={
-                  actionLoading === 'simulate_matchday_competition_ucl' ||
+                  actionLoading === 'preview_ucl' ||
                   league?.status !== 'IN_SEASON' ||
                   (league?.scheduled_ucl_this_round ?? 0) === 0
                 }
                 className="w-full"
               >
-                {actionLoading === 'simulate_matchday_competition_ucl' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-                Simulate UCL Matchday {(league?.current_round_ucl ?? 0) || 1}
+                {actionLoading === 'preview_ucl' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+                Preview UCL Matchday {(league?.current_round_ucl ?? 0) || 1}
               </Button>
             )}
             {league?.has_uel_matches && (
               <Button
                 variant="outline"
-                onClick={() => performAction('simulate_matchday_competition', { competitionType: 'uel' })}
+                onClick={() => previewMatchday('uel')}
                 disabled={
-                  actionLoading === 'simulate_matchday_competition_uel' ||
+                  actionLoading === 'preview_uel' ||
                   league?.status !== 'IN_SEASON' ||
                   (league?.scheduled_uel_this_round ?? 0) === 0
                 }
                 className="w-full"
               >
-                {actionLoading === 'simulate_matchday_competition_uel' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-                Simulate UEL Matchday {(league?.current_round_uel ?? 0) || 1}
+                {actionLoading === 'preview_uel' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+                Preview UEL Matchday {(league?.current_round_uel ?? 0) || 1}
               </Button>
             )}
             {league?.has_uecl_matches && (
               <Button
                 variant="outline"
-                onClick={() => performAction('simulate_matchday_competition', { competitionType: 'uecl' })}
+                onClick={() => previewMatchday('uecl')}
                 disabled={
-                  actionLoading === 'simulate_matchday_competition_uecl' ||
+                  actionLoading === 'preview_uecl' ||
                   league?.status !== 'IN_SEASON' ||
                   (league?.scheduled_uecl_this_round ?? 0) === 0
                 }
                 className="w-full"
               >
-                {actionLoading === 'simulate_matchday_competition_uecl' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-                Simulate UECL Matchday {(league?.current_round_uecl ?? 0) || 1}
+                {actionLoading === 'preview_uecl' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+                Preview UECL Matchday {(league?.current_round_uecl ?? 0) || 1}
               </Button>
             )}
             {league?.has_supercup_matches && (
               <Button
                 variant="outline"
-                onClick={() => performAction('simulate_matchday_competition', { competitionType: 'supercup' })}
+                onClick={() => previewMatchday('supercup')}
                 disabled={
-                  actionLoading === 'simulate_matchday_competition_supercup' ||
+                  actionLoading === 'preview_supercup' ||
                   league?.status !== 'IN_SEASON' ||
                   (league?.scheduled_supercup_this_round ?? 0) === 0
                 }
                 className="w-full"
               >
-                {actionLoading === 'simulate_matchday_competition_supercup' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
-                Simulate Super Cup
+                {actionLoading === 'preview_supercup' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+                Preview Super Cup
               </Button>
             )}
             {league?.status !== 'IN_SEASON' && <p className="text-xs text-muted-foreground">League must be IN_SEASON</p>}
@@ -1435,7 +1706,7 @@ export default function HostControlsPage() {
 
         {/* EAFC Setup (MANUAL mode only) */}
         {league?.match_mode === 'MANUAL' && (
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> EAFC Setup</CardTitle>
             <CardDescription>View all teams&apos; squads, formations, and EAFC tactic codes. Edit players if needed.</CardDescription>
@@ -1452,7 +1723,7 @@ export default function HostControlsPage() {
 
         {/* Insert Result (MANUAL mode only) */}
         {league?.match_mode === 'MANUAL' && leagueId && (
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Play className="h-4 w-4" /> Insert Result</CardTitle>
             <CardDescription>Manually enter match results. Insert one match at a time.</CardDescription>
@@ -1476,18 +1747,14 @@ export default function HostControlsPage() {
         )}
 
         {/* End Season */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><StopCircle className="h-4 w-4" /> End Season</CardTitle>
             <CardDescription>Process end-of-season: prizes, wages, contract expiry, next season.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             <Button
-              onClick={() => {
-                if (confirm('Are you sure you want to end the season? This cannot be undone.')) {
-                  performAction('end_season');
-                }
-              }}
+              onClick={() => setEndSeasonConfirm(true)}
               disabled={actionLoading === 'end_season' || (league?.unsimulated_match_count ?? 0) > 0}
               variant="destructive"
               className="w-full"
@@ -1504,7 +1771,7 @@ export default function HostControlsPage() {
         </Card>
 
         {/* Generate Injuries */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Zap className="h-4 w-4" /> Random Injuries</CardTitle>
             <CardDescription>Generate random injuries for players across the league.</CardDescription>
@@ -1523,7 +1790,7 @@ export default function HostControlsPage() {
         </Card>
 
         {/* Free Agency Pool & Deadline (OFFSEASON only) */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Gavel className="h-4 w-4" /> Free Agency Pool</CardTitle>
             <CardDescription>Select players for the FA pool this season. Set bid deadline. When pool has players, only those can be bid on.</CardDescription>
@@ -1534,7 +1801,7 @@ export default function HostControlsPage() {
         </Card>
 
         {/* Resolve Free Agency (OFFSEASON only) */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Gavel className="h-4 w-4" /> Resolve Free Agency</CardTitle>
             <CardDescription>Process sealed bids and assign free agents to winning teams. Run after managers have placed bids.</CardDescription>
@@ -1556,7 +1823,7 @@ export default function HostControlsPage() {
         </Card>
 
         {/* Season Setup: Pick 3 Sponsors (OFFSEASON) */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><DollarSign className="h-4 w-4" /> Pick 3 Sponsors</CardTitle>
             <CardDescription>Select 3 sponsors for this season. Teams will choose from these when signing.</CardDescription>
@@ -1567,7 +1834,7 @@ export default function HostControlsPage() {
         </Card>
 
         {/* Draft Pool (Season 2+, OFFSEASON only) */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Draft Pool</CardTitle>
             <CardDescription>Select players for the draft pool this season. When pool has players, only those can be drafted.</CardDescription>
@@ -1578,7 +1845,7 @@ export default function HostControlsPage() {
         </Card>
 
         {/* Start Draft (Season 2+, OFFSEASON only) */}
-        <Card className="bg-neutral-900 border-neutral-800">
+        <Card className="bg-surface border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4" /> Start Draft</CardTitle>
             <CardDescription>Begin the draft for this season. Season 2+ only. Order = inverse of prior standings.</CardDescription>
@@ -1603,7 +1870,10 @@ export default function HostControlsPage() {
       </div>
 
       {/* Youngster Upgrades */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      {leagueId && <HostAuctionPoolCard leagueId={leagueId} disabled={league?.status !== "OFFSEASON"} />}
+
+      {/* Youngster Upgrades */}
+      <Card className="bg-surface border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Youngster Upgrades</CardTitle>
           <CardDescription>Enter games played and average ratings for youngsters. Apply upgrades before end of season.</CardDescription>
@@ -1619,7 +1889,7 @@ export default function HostControlsPage() {
       </Card>
 
       {/* Add Player to Team */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card className="bg-surface border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><UserPlus2 className="h-4 w-4" /> Add Player to Team</CardTitle>
           <CardDescription>Add a custom player or assign a free agent to a team. Host only.</CardDescription>
@@ -1635,7 +1905,7 @@ export default function HostControlsPage() {
       </Card>
 
       {/* Apply Fine */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card className="bg-surface border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><DollarSign className="h-4 w-4" /> Apply Fine</CardTitle>
           <CardDescription>Deduct money from a team's budget with a reason.</CardDescription>
@@ -1678,7 +1948,7 @@ export default function HostControlsPage() {
       <Separator />
 
       {/* Audit Logs */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card className="bg-surface border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2"><ScrollText className="h-4 w-4" /> Audit Logs</CardTitle>
           <CardDescription>Recent actions and events in this league.</CardDescription>
@@ -1689,7 +1959,7 @@ export default function HostControlsPage() {
           ) : (
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {auditLogs.map(log => (
-                <div key={log.id} className="flex items-start gap-3 p-2 rounded bg-neutral-800/50 text-sm">
+                <div key={log.id} className="flex items-start gap-3 p-2 rounded bg-surface-3 text-sm">
                   <Badge variant="outline" className="text-xs shrink-0">{log.action}</Badge>
                   <div className="flex-1 min-w-0">
                     <pre className="text-xs text-muted-foreground overflow-x-auto whitespace-pre-wrap">
@@ -1705,6 +1975,103 @@ export default function HostControlsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!simulationPreview} onOpenChange={(open) => !open && setSimulationPreview(null)}>
+        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-4xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <DialogTitle>{previewCompetition.toUpperCase()} matchday preview</DialogTitle>
+              {simulationPreview && <Badge variant="outline">Attempt {simulationPreview.attempt + 1}</Badge>}
+            </div>
+            <DialogDescription>
+              Nothing has been written to the standings yet. Review the full matchday before committing it.
+            </DialogDescription>
+          </DialogHeader>
+          {!!simulationPreview?.output_snapshot.warnings?.length && <div className="rounded-lg border border-status-warning/30 bg-status-warning/10 p-3 text-sm text-status-warning">
+            <p className="font-medium">Lineup warnings</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">{simulationPreview.output_snapshot.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+          </div>}
+          <div className="min-w-0 space-y-3 overflow-x-hidden overflow-y-auto pr-1">
+            {simulationPreview?.output_snapshot.matches.map((match) => {
+              const notableEvents = match.events.filter((event) => ['goal', 'yellow_card', 'red_card', 'injury'].includes(event.type));
+              return (
+                <div key={match.matchId} className="min-w-0 rounded-xl border border-border bg-surface-2 p-3 sm:p-4">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-4">
+                    <p className="text-right font-medium truncate">{match.homeTeamName}</p>
+                    <div className="rounded-lg bg-background px-4 py-2 text-xl font-bold tabular-nums">
+                      {match.homeScore} <span className="text-muted-foreground">–</span> {match.awayScore}
+                    </div>
+                    <p className="font-medium truncate">{match.awayTeamName}</p>
+                  </div>
+                  <div className="mt-2 flex justify-center gap-4 text-xs text-muted-foreground">
+                    <span>xG {match.teamStats.home.xg.toFixed(2)} – {match.teamStats.away.xg.toFixed(2)}</span>
+                    <span>Shots {match.teamStats.home.shots} – {match.teamStats.away.shots}</span>
+                  </div>
+                  {notableEvents.length > 0 && (
+                    <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                      {notableEvents.map((event, index) => (
+                        <Badge key={`${event.minute}-${index}`} variant="secondary" className="max-w-full whitespace-normal break-words text-left font-normal">
+                          {event.minute}&apos; {event.type === 'goal' ? '⚽' : event.type === 'yellow_card' ? '🟨' : event.type === 'red_card' ? '🟥' : '✚'} {event.playerName}
+                          {event.type === 'goal' && event.secondaryPlayerName ? ` (${event.secondaryPlayerName})` : ''}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="sm:justify-between gap-2 border-t border-border pt-4">
+            <Button variant="outline" disabled={actionLoading !== null} onClick={() => previewMatchday(previewCompetition, true)}>
+              {actionLoading === `preview_${previewCompetition}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Reroll preview
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setSimulationPreview(null)}>Close</Button>
+              <Button disabled={actionLoading !== null} onClick={commitMatchdayPreview} className="bg-status-positive text-black hover:bg-status-positive/90">
+                {actionLoading === 'commit_preview' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Commit matchday
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!statusConfirm} onOpenChange={(open) => !open && setStatusConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Switch league to {statusConfirm?.replace("_", " ")}?</DialogTitle>
+            <DialogDescription>
+              This affects sponsors, FA, trades, and match simulation.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusConfirm(null)}>Cancel</Button>
+            <Button onClick={confirmStatusSwitch}>Switch</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={endSeasonConfirm} onOpenChange={setEndSeasonConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>End the season?</DialogTitle>
+            <DialogDescription>This cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEndSeasonConfirm(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setEndSeasonConfirm(false);
+                performAction('end_season');
+              }}
+            >
+              End Season
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

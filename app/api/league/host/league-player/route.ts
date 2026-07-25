@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const { data: lp, error } = await serviceSupabase
       .from("league_players")
-      .select("id, player_id, player_name, full_name, team_id, league_id, rating, positions, potential, is_youngster, is_veteran, base_rating, acceleration, sprint_speed, agility, reactions, balance, shot_power, jumping, stamina, strength, long_shots, aggression, interceptions, positioning, vision, penalties, composure, crossing, finishing, heading_accuracy, short_passing, volleys, dribbling, curve, fk_accuracy, long_passing, ball_control, defensive_awareness, standing_tackle, sliding_tackle, gk_diving, gk_handling, gk_kicking, gk_positioning, gk_reflexes")
+      .select("id, player_id, player_name, full_name, team_id, league_id, rating, positions, potential, international_reputation, is_youngster, is_veteran, base_rating, acceleration, sprint_speed, agility, reactions, balance, shot_power, jumping, stamina, strength, long_shots, aggression, interceptions, positioning, vision, penalties, composure, crossing, finishing, heading_accuracy, short_passing, volleys, dribbling, curve, fk_accuracy, long_passing, ball_control, defensive_awareness, standing_tackle, sliding_tackle, gk_diving, gk_handling, gk_kicking, gk_positioning, gk_reflexes")
       .eq("id", leaguePlayerId)
       .eq("league_id", leagueId)
       .single();
@@ -42,20 +42,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    // Fetch international_reputation from player table (for edit form)
-    let international_reputation: string | null = null;
+    // Fill unset league overrides from the immutable seed row for display.
+    // Saving still writes only to league_players.
+    let seed: Record<string, unknown> | null = null;
     if (lp.player_id) {
       const { data: p } = await serviceSupabase
         .from("player")
-        .select("international_reputation")
+        .select("*")
         .eq("player_id", lp.player_id)
         .single();
-      international_reputation = p?.international_reputation ?? null;
+      seed = p as Record<string, unknown> | null;
+    }
+
+    const merged = { ...lp } as Record<string, unknown>;
+    for (const key of ["international_reputation", "acceleration", "sprint_speed", "agility", "reactions", "balance", "shot_power", "jumping", "stamina", "strength", "long_shots", "aggression", "interceptions", "positioning", "vision", "penalties", "composure", "crossing", "finishing", "heading_accuracy", "short_passing", "volleys", "dribbling", "curve", "fk_accuracy", "long_passing", "ball_control", "defensive_awareness", "standing_tackle", "sliding_tackle", "gk_diving", "gk_handling", "gk_kicking", "gk_positioning", "gk_reflexes"]) {
+      if (merged[key] == null && seed?.[key] != null) merged[key] = seed[key];
     }
 
     return NextResponse.json({
       success: true,
-      data: { ...lp, international_reputation },
+      data: merged,
     });
   } catch (err: unknown) {
     console.error("Host league player GET error:", err);

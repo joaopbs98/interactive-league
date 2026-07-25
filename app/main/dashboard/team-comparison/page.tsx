@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -12,8 +11,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLeague } from "@/contexts/LeagueContext";
-import { Users, Trophy } from "lucide-react";
+import { ArrowRightLeft, Trophy } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 type Team = { id: string; name: string; acronym: string };
 type SquadPlayer = { id: string; name: string; position: string; rating?: number };
@@ -31,7 +32,6 @@ export default function TeamComparisonPage() {
   const [ourSquad, setOurSquad] = useState<SquadPlayer[]>([]);
   const [theirSquad, setTheirSquad] = useState<SquadPlayer[]>([]);
   const [ourWage, setOurWage] = useState(0);
-  const [theirWage, setTheirWage] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,18 +56,19 @@ export default function TeamComparisonPage() {
     fetch(`/api/user/team/${selectedLeagueId}`)
       .then((r) => r.json())
       .then((d) => {
-        if (d.success && d.data?.squad) {
+        if (d.success && d.team?.squad) {
+          const squad = d.team.squad as { player_id: string; full_name?: string; player_name?: string; positions?: string; rating?: number; overall_rating?: number; wage?: number }[];
           setOurSquad(
-            (d.data.squad as { player_id: string; full_name?: string; player_name?: string; positions?: string; rating?: number }[])
+            squad
               .map((p) => ({
                 id: p.player_id,
                 name: p.full_name || p.player_name || p.player_id,
                 position: (p.positions || "").split(",")[0]?.trim() || "",
-                rating: p.rating,
+                rating: p.rating ?? p.overall_rating,
               }))
               .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
           );
-          setOurWage(d.data.wageBill ?? 0);
+          setOurWage(squad.reduce((sum, p) => sum + (p.wage ?? 0), 0));
         } else {
           setOurSquad([]);
           setOurWage(0);
@@ -82,7 +83,6 @@ export default function TeamComparisonPage() {
   useEffect(() => {
     if (!selectedLeagueId || !opponentId) {
       setTheirSquad([]);
-      setTheirWage(0);
       return;
     }
     fetch(`/api/league/team-squad?leagueId=${selectedLeagueId}&teamId=${opponentId}`)
@@ -98,9 +98,7 @@ export default function TeamComparisonPage() {
           setTheirSquad([]);
         }
       })
-      .catch(() => setTheirSquad([])) as Promise<void>;
-
-    setTheirWage(0);
+      .catch(() => setTheirSquad([]));
   }, [selectedLeagueId, opponentId]);
 
   const ourAvg = ourSquad.length > 0
@@ -111,6 +109,7 @@ export default function TeamComparisonPage() {
     : 0;
   const ourTop14 = ourSquad.slice(0, 14);
   const theirTop14 = theirSquad.slice(0, 14);
+  const maxRows = Math.max(ourTop14.length, theirTop14.length);
 
   if (loading) {
     return (
@@ -129,13 +128,12 @@ export default function TeamComparisonPage() {
   }
 
   const opponents = teams.filter((t) => t.id !== selectedTeam.id);
+  const opponentName = opponents.find((t) => t.id === opponentId)?.name ?? "Opponent";
 
   return (
     <div className="p-8 flex flex-col gap-6">
-      <h2 className="text-2xl font-bold flex items-center gap-2">
-        <Users className="h-7 w-7" />
-        Team Comparison
-      </h2>
+      <Breadcrumbs />
+      <PageHeader eyebrow="League" title="Team Comparison" subtitle="Compare squad strength head-to-head" />
 
       <div className="flex items-center gap-4">
         <span className="text-sm text-muted-foreground">Compare with:</span>
@@ -154,111 +152,104 @@ export default function TeamComparisonPage() {
       </div>
 
       {!opponentId ? (
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            Select an opponent to compare squads.
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-border-strong bg-surface p-8 text-center text-muted-foreground">
+          Select an opponent to compare squads.
+        </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card className="bg-neutral-900 border-neutral-800 border-l-4 border-l-blue-500">
-              <CardHeader>
-                <CardTitle className="text-lg">{selectedTeam.name}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
+          {/* Head-to-head — one panel, two sides, differences highlighted instead of two duplicate cards */}
+          <div className="rounded-lg border border-border-strong bg-surface overflow-hidden">
+            <div className="grid grid-cols-2 divide-x divide-border">
+              <div className="p-6 flex flex-col gap-3">
+                <p className="font-display text-xl truncate">{selectedTeam.name}</p>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Avg rating</span>
-                  <span className="font-bold">{ourAvg}</span>
+                  <span className={`font-bold tabular-nums ${ourAvg >= theirAvg ? "text-status-positive" : ""}`}>{ourAvg}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Wage bill</span>
-                  <span className="font-bold">{formatMoney(ourWage)}</span>
+                  <span className="font-bold tabular-nums">{formatMoney(ourWage)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Squad size</span>
-                  <span className="font-bold">{ourSquad.length}</span>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-neutral-900 border-neutral-800 border-l-4 border-l-amber-500">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-lg">
-                  {opponents.find((t) => t.id === opponentId)?.name ?? "Opponent"}
-                </CardTitle>
-                <Link href={`/main/dashboard/team/${opponentId}/squad?league=${selectedLeagueId}`}>
-                  <Button variant="outline" size="sm" className="shrink-0">
-                    View squad
-                  </Button>
-                </Link>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Avg rating</span>
-                  <span className="font-bold">{theirAvg}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Wage bill</span>
-                  <span className="font-bold text-muted-foreground">—</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Squad size</span>
-                  <span className="font-bold">{theirSquad.length}</span>
-                </div>
-                <Link
-                  href={`/main/dashboard/team/${opponentId}/squad?league=${selectedLeagueId}`}
-                  className="block pt-2"
-                >
-                  <Button variant="secondary" size="sm" className="w-full">
-                    View full roster
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="bg-neutral-900 border-neutral-800">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Trophy className="h-5 w-5" />
-                Top 14 by rating
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">{selectedTeam.name}</p>
-                  <div className="space-y-1">
-                    {ourTop14.map((p, i) => (
-                      <div key={p.id} className="flex justify-between text-sm">
-                        <span>{i + 1}. {p.name}</span>
-                        <span className="font-medium">{p.rating ?? "—"}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">
-                    {opponents.find((t) => t.id === opponentId)?.name ?? "Opponent"}
-                  </p>
-                  <Link
-                    href={`/main/dashboard/team/${opponentId}/squad?league=${selectedLeagueId}`}
-                    className="text-xs text-primary hover:underline mb-2 inline-block"
-                  >
-                    View full roster
-                  </Link>
-                  <div className="space-y-1">
-                    {theirTop14.map((p, i) => (
-                      <div key={p.id} className="flex justify-between text-sm">
-                        <span>{i + 1}. {p.name}</span>
-                        <span className="font-medium">{p.rating ?? "—"}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <span className="font-bold tabular-nums">{ourSquad.length}</span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="p-6 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-display text-xl truncate">{opponentName}</p>
+                  <Link href={`/main/dashboard/team/${opponentId}/squad?league=${selectedLeagueId}`}>
+                    <Button variant="outline" size="sm" className="shrink-0">
+                      View squad
+                    </Button>
+                  </Link>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Avg rating</span>
+                  <span className={`font-bold tabular-nums ${theirAvg > ourAvg ? "text-status-positive" : ""}`}>{theirAvg}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Wage bill</span>
+                  <span className="font-bold text-muted-foreground">Not public</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Squad size</span>
+                  <span className="font-bold tabular-nums">{theirSquad.length}</span>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-border px-6 py-3 flex justify-center">
+              <Link href={`/main/dashboard/trades?league=${selectedLeagueId}&proposeTo=${opponentId}`}>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <ArrowRightLeft className="h-3.5 w-3.5" /> Propose a Trade with {opponentName}
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          {/* Top 14 comparison — per-row winner highlighted, not just two flat lists */}
+          <div className="rounded-lg border border-border-strong bg-surface overflow-hidden">
+            <div className="px-6 pt-5 pb-1 flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-muted-foreground" />
+              <h2 className="font-display text-2xl">Top 14 by Rating</h2>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-border mt-3">
+              <div className="px-6 pb-4">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 truncate">{selectedTeam.name}</p>
+                <div className="space-y-1">
+                  {Array.from({ length: maxRows }).map((_, i) => {
+                    const p = ourTop14[i];
+                    const opp = theirTop14[i];
+                    const better = p && opp ? (p.rating ?? 0) > (opp.rating ?? 0) : !!p && !opp;
+                    if (!p) return <div key={i} className="h-6" />;
+                    return (
+                      <div key={p.id} className="flex justify-between text-sm py-0.5">
+                        <span className="truncate">{i + 1}. {p.name}</span>
+                        <span className={`font-medium tabular-nums shrink-0 ml-2 ${better ? "text-status-positive" : ""}`}>{p.rating ?? "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="px-6 pb-4">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 truncate">{opponentName}</p>
+                <div className="space-y-1">
+                  {Array.from({ length: maxRows }).map((_, i) => {
+                    const p = theirTop14[i];
+                    const opp = ourTop14[i];
+                    const better = p && opp ? (p.rating ?? 0) > (opp.rating ?? 0) : !!p && !opp;
+                    if (!p) return <div key={i} className="h-6" />;
+                    return (
+                      <div key={p.id} className="flex justify-between text-sm py-0.5">
+                        <span className="truncate">{i + 1}. {p.name}</span>
+                        <span className={`font-medium tabular-nums shrink-0 ml-2 ${better ? "text-status-positive" : ""}`}>{p.rating ?? "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>

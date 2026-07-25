@@ -85,24 +85,47 @@ export async function POST(request: NextRequest) {
     }
 
     // Phase lock: trades only in OFFSEASON
+    let leagueSeason: number | null = null;
     if (teamCheck.league_id) {
       const { data: league } = await supabase
         .from('leagues')
-        .select('status')
+        .select('status, season')
         .eq('id', teamCheck.league_id)
         .single();
 
       if (league?.status === 'IN_SEASON') {
         return NextResponse.json({ error: "Trades are not allowed during the season" }, { status: 400 });
       }
+      leagueSeason = league?.season ?? null;
+    }
+
+    const offeredPlayerIds = items
+      .filter((item: any) => item.type === 'player' && item.playerId)
+      .map((item: any) => item.playerId);
+    if (offeredPlayerIds.length > 0) {
+      const { data: activeListings } = await supabase
+        .from('auctions')
+        .select('player_id')
+        .eq('league_id', teamCheck.league_id)
+        .in('status', ['draft', 'active'])
+        .in('player_id', offeredPlayerIds);
+      if ((activeListings?.length ?? 0) > 0) {
+        return NextResponse.json({ error: 'A player listed in an auction cannot be traded' }, { status: 400 });
+      }
     }
 
     // Create trade
+    // league_id/season must be set here (not left null) — end_season's trade-objective
+    // sweep joins `trades tr ON o.trade_id = tr.id WHERE tr.league_id = p_league_id`, so a
+    // trade created without league_id can never match and its objective silently never
+    // fires (no payout, no penalty, ever) even though the trade itself completes normally.
     const { data: trade, error: tradeError } = await supabase
       .from('trades')
       .insert({
         from_team_id: fromTeamId,
         to_team_id: toTeamId,
+        league_id: teamCheck.league_id,
+        season: leagueSeason,
         status: 'pending',
         message: message || '',
         created_at: new Date().toISOString()
@@ -196,4 +219,4 @@ export async function POST(request: NextRequest) {
     console.error('Create trade API error:', error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-} 
+}

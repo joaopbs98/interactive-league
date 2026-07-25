@@ -8,9 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useLeague } from "@/contexts/LeagueContext";
-import { getRatingColorClassesForInput } from "@/utils/ratingColors";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { PageHeader } from "@/components/PageHeader";
+import { getRatingColorClasses, getRatingColorClassesForInput } from "@/utils/ratingColors";
 import { computeOverallFromStats } from "@/lib/computeOverallFromStats";
-import { ArrowLeft, UserPlus, Loader2 } from "lucide-react";
+import { ArrowLeft, UserPlus, Loader2, Save, ShieldCheck } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast, Toaster } from "sonner";
 
@@ -114,7 +116,7 @@ export default function AddPlayerPage() {
           return;
         }
         const lp = json.data;
-        setCommonName(lp.player_name || "");
+        setCommonName((lp.player_name || "").replace(/\s+-\s*$/, "").trim());
         const parts = (lp.full_name || lp.player_name || "").split(" ");
         setFirstName(parts[0] || "");
         setLastName(parts.slice(1).join(" ") || "");
@@ -277,21 +279,34 @@ export default function AddPlayerPage() {
 
   if (!leagueId) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="p-6 flex flex-col gap-6 max-w-[1400px] mx-auto">
+        <Breadcrumbs />
         <p className="text-muted-foreground">No league selected.</p>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 max-w-[1180px] mx-auto">
       <Toaster position="top-center" richColors />
-      <Button variant="ghost" onClick={() => router.back()}>
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back
-      </Button>
+      <Breadcrumbs />
 
-      <h1 className="text-2xl font-bold">{isEditMode ? "Edit Player" : "Add Custom Player"}</h1>
+      <PageHeader
+        eyebrow={isEditMode ? "Squad editor" : "League"}
+        title={isEditMode ? (commonName || "Edit player") : "Add Custom Player"}
+        subtitle={isEditMode ? "Adjust the player profile and EAFC attributes for this save only." : undefined}
+        stats={isEditMode ? [
+          { label: "OVR", value: overall, emphasis: true },
+          { label: "Position", value: positionsStr || mainPosition },
+          { label: "Team", value: teams.find((team) => team.id === selectedTeamId)?.name || "—" },
+        ] : undefined}
+        actions={
+          <Button variant="outline" onClick={() => router.back()}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+        }
+      />
 
       {(loading || editLoading) ? (
         <div className="flex items-center gap-2 text-muted-foreground">
@@ -299,39 +314,32 @@ export default function AddPlayerPage() {
           Loading teams...
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: optional position map - simplified */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="text-base">Team</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Label className="text-sm mb-2 block">{isEditMode ? "Team" : "Assign to team"}</Label>
-              <Select value={selectedTeamId} onValueChange={setSelectedTeamId} disabled={isEditMode}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select team" />
-                </SelectTrigger>
-                <SelectContent>
-                  {teams.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
+        <div className="flex flex-col gap-6">
+          {/* Team — a compact inline selector, not a whole card column for one dropdown */}
+          <div className={`${isEditMode ? "hidden" : "flex"} rounded-lg border border-border-strong bg-surface p-4 items-center gap-3`}>
+            <Label className="text-sm shrink-0">{isEditMode ? "Team" : "Assign to team"}</Label>
+            <Select value={selectedTeamId} onValueChange={setSelectedTeamId} disabled={isEditMode}>
+              <SelectTrigger className="max-w-xs">
+                <SelectValue placeholder="Select team" />
+              </SelectTrigger>
+              <SelectContent>
+                {teams.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          {/* Right: form */}
-          <div className="lg:col-span-2 space-y-6">
-            <Tabs defaultValue={isEditMode ? "stats" : "identity"}>
-              <TabsList className={`grid w-full ${isEditMode ? "grid-cols-1" : "grid-cols-4"}`}>
-                {!isEditMode && <TabsTrigger value="identity">Identity</TabsTrigger>}
-                <TabsTrigger value="stats">Stats</TabsTrigger>
-                {!isEditMode && <TabsTrigger value="profile">Profile</TabsTrigger>}
-                {!isEditMode && <TabsTrigger value="financials">Financials</TabsTrigger>}
-              </TabsList>
+          <Tabs defaultValue={isEditMode ? "stats" : "identity"}>
+            <TabsList className={`${isEditMode ? "hidden" : "grid"} w-full h-auto grid-cols-4`}>
+              {!isEditMode && <TabsTrigger value="identity">Identity</TabsTrigger>}
+              <TabsTrigger value="stats">Stats</TabsTrigger>
+              {!isEditMode && <TabsTrigger value="profile">Profile</TabsTrigger>}
+              {!isEditMode && <TabsTrigger value="financials">Financials</TabsTrigger>}
+            </TabsList>
 
               <TabsContent value="identity" className="mt-4">
-                <Card>
+                <Card className="bg-surface border-border">
                   <CardContent className="pt-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -420,10 +428,15 @@ export default function AddPlayerPage() {
               </TabsContent>
 
               <TabsContent value="stats" className="mt-4">
-                <Card>
+                <Card className="bg-surface border-border overflow-hidden">
+                  <CardHeader className="border-b border-border bg-surface-2/40">
+                    <CardTitle className="text-lg flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-accent" /> Player attributes</CardTitle>
+                    <p className="text-sm text-muted-foreground">Overall updates automatically as attributes and reputation change.</p>
+                  </CardHeader>
                   <CardContent className="pt-6">
-                    <div className="mb-6">
-                      <Label className="text-sm mb-2 block">Player type</Label>
+                    <div className="grid sm:grid-cols-2 gap-4 mb-6 rounded-lg border border-border bg-surface-2/50 p-4">
+                    <div>
+                      <Label className="text-sm mb-2 block">Development type</Label>
                       <Select value={playerType} onValueChange={(v: "youngster" | "veteran" | "neither") => setPlayerType(v)}>
                         <SelectTrigger className="w-48">
                           <SelectValue />
@@ -434,51 +447,64 @@ export default function AddPlayerPage() {
                           <SelectItem value="veteran">Veteran</SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Youngster: upgrade logic, requires Potential. Veteran: downgrade-only.
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Youngsters can upgrade and require potential. Veterans are downgrade-only.
                       </p>
                     </div>
                     {isEditMode && (
-                      <div className="mb-6">
-                        <Label>Positions (comma-separated)</Label>
+                      <div>
+                        <Label>Eligible positions</Label>
                         <Input
+                          className="mt-2"
                           value={positionsStr}
                           onChange={(e) => setPositionsStr(e.target.value)}
                           placeholder="e.g. CB, LB, RB"
                         />
                       </div>
                     )}
+                    </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
                       <div>
                         <Label>Overall rating *</Label>
-                        <Input
-                          type="number"
-                          min={40}
-                          max={99}
-                          value={overall}
-                          readOnly
-                          className={`text-xl font-bold cursor-default border-0 ${getRatingColorClassesForInput(parseInt(overall, 10) || 0)}`}
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
+                        {/* Computed, not user-editable — a stat display, not a fake input */}
+                        <div
+                          className={`mt-1.5 h-14 rounded-md flex items-center justify-center text-2xl font-bold tabular-nums ${getRatingColorClasses(parseInt(overall, 10) || 0)}`}
+                        >
+                          {overall}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1.5">
                           Auto-calculated from primary position, stats &amp; intl. rep
                         </p>
                       </div>
                       <div>
                         <Label>Potential{playerType === "youngster" ? " *" : ""}</Label>
-                        <Input
-                          type="number"
-                          min={40}
-                          max={99}
-                          value={potential}
-                          onChange={(e) => setPotential(e.target.value)}
-                          placeholder={playerType === "youngster" ? "Required" : "Optional"}
-                          className={potential ? `border-0 ${getRatingColorClassesForInput(parseInt(potential, 10) || 0)}` : ""}
-                        />
+                        {potential ? (
+                          <Input
+                            type="number"
+                            min={40}
+                            max={99}
+                            value={potential}
+                            onChange={(e) => setPotential(e.target.value)}
+                            className={`mt-1.5 h-14 text-center text-2xl font-bold tabular-nums border-0 ${getRatingColorClassesForInput(parseInt(potential, 10) || 0)}`}
+                          />
+                        ) : (
+                          <Input
+                            type="number"
+                            min={40}
+                            max={99}
+                            value={potential}
+                            onChange={(e) => setPotential(e.target.value)}
+                            placeholder={playerType === "youngster" ? "Required" : "Optional"}
+                            className={`mt-1.5 h-14 text-center text-sm border-2 border-dashed bg-surface-2 ${
+                              playerType === "youngster" ? "border-status-warning/50" : "border-border-strong"
+                            }`}
+                          />
+                        )}
                       </div>
                       <div>
                         <Label>International reputation (1-5)</Label>
                         <Select value={internationalRep} onValueChange={setInternationalRep}>
-                          <SelectTrigger>
+                          <SelectTrigger className="mt-1.5 h-14">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -487,37 +513,52 @@ export default function AddPlayerPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1.5">
                           FIFA/EAFC: affects OVR (3★ +1, 4★ +1-2, 5★ +1-3)
                         </p>
                       </div>
                     </div>
+                    <div className="grid lg:grid-cols-2 gap-4">
                     {Object.entries(statCategories).map(([cat, keys]) => (
-                      <div key={cat} className="mb-6">
-                        <h3 className="text-sm font-medium mb-2">{cat}</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                          {keys.map((stat) => (
-                            <div key={stat} className="flex flex-col gap-1">
-                              <Label className="text-xs text-muted-foreground">{formatStatName(stat)}</Label>
-                              <Input
-                                type="number"
-                                min={1}
-                                max={99}
-                                value={stats[stat] ?? 50}
-                                onChange={(e) => handleStatChange(stat, parseInt(e.target.value, 10) || 50)}
-                                className={`text-center text-sm border-0 ${getRatingColorClassesForInput(stats[stat] ?? 50)}`}
-                              />
-                            </div>
-                          ))}
+                      <section key={cat} className="rounded-lg border border-border bg-surface-2/35 p-4">
+                        <h3 className="text-sm font-semibold mb-4 pb-2 border-b border-border">
+                          {cat}
+                        </h3>
+                        <div className="space-y-3">
+                          {keys.map((stat) => {
+                            const v = stats[stat] ?? 50;
+                            return (
+                              <div key={stat} className="flex items-center gap-3">
+                                <span className="text-sm text-muted-foreground w-32 shrink-0 truncate">{formatStatName(stat)}</span>
+                                <input
+                                  type="range"
+                                  min={1}
+                                  max={99}
+                                  value={v}
+                                  onChange={(e) => handleStatChange(stat, parseInt(e.target.value, 10) || 50)}
+                                  className="flex-1 accent-accent h-1.5 cursor-pointer"
+                                />
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={99}
+                                  value={v}
+                                  onChange={(e) => handleStatChange(stat, parseInt(e.target.value, 10) || 50)}
+                                  className={`w-11 h-6 rounded text-xs font-bold tabular-nums text-center shrink-0 border-0 p-0 ${getRatingColorClasses(v)}`}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
+                      </section>
                     ))}
+                    </div>
                   </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="profile" className="mt-4">
-                <Card>
+                <Card className="bg-surface border-border">
                   <CardContent className="pt-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -578,7 +619,7 @@ export default function AddPlayerPage() {
               </TabsContent>
 
               <TabsContent value="financials" className="mt-4">
-                <Card>
+                <Card className="bg-surface border-border">
                   <CardContent className="pt-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -607,16 +648,20 @@ export default function AddPlayerPage() {
               </TabsContent>
             </Tabs>
 
-            <div className="flex gap-2">
+            <div className="sticky bottom-4 z-20 flex items-center justify-between gap-4 rounded-xl border border-border-strong bg-surface/95 p-3 shadow-lg backdrop-blur-sm">
+              <p className="hidden sm:block text-sm text-muted-foreground">
+                {isEditMode ? "Changes apply only to this league save." : "Review the player details before adding them."}
+              </p>
+              <div className="flex gap-2 ml-auto">
               <Button onClick={handleSubmit} disabled={submitting || editLoading}>
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : isEditMode ? <Save className="h-4 w-4 mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}
                 {isEditMode ? "Save Changes" : "Add Player"}
               </Button>
               <Button variant="outline" onClick={() => router.back()}>
                 Cancel
               </Button>
+              </div>
             </div>
-          </div>
         </div>
       )}
     </div>

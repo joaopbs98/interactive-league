@@ -17,7 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useLeague } from "@/contexts/LeagueContext";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { getRatingColors } from "@/utils/ratingColors";
+import { toast, Toaster } from "sonner";
 
 type DraftPick = {
   id: string;
@@ -58,7 +61,6 @@ export default function DraftPage() {
   const [loading, setLoading] = useState(true);
   const [dialogPlayer, setDialogPlayer] = useState<PoolPlayer | null>(null);
   const [picking, setPicking] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [bonusLoading, setBonusLoading] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,7 +75,6 @@ export default function DraftPage() {
       if (json.success && json.data) {
         setData(json.data);
         if (json.data.picks?.length) {
-          const ids = [...new Set(json.data.picks.map((p: DraftPick) => p.current_owner_team_id ?? p.team_id).filter(Boolean))];
           const teamRes = await fetch(`/api/league/teams?leagueId=${selectedLeagueId}`);
           const teamJson = await teamRes.json();
           const teamList = teamJson.data || [];
@@ -96,7 +97,6 @@ export default function DraftPage() {
     const isClaim = data.currentPick?.bonus?.type === "merch_pct" || data.currentPick?.bonus?.type === "upgrade_ticket";
     if (!isClaim && !dialogPlayer) return;
     setPicking(true);
-    setMessage(null);
     try {
       const res = await fetch("/api/draft", {
         method: "POST",
@@ -109,19 +109,18 @@ export default function DraftPage() {
       });
       const json = await res.json();
       if (json.success) {
-        setMessage({
-          type: "success",
-          text: isClaim
+        toast.success(
+          isClaim
             ? `Claimed ${data.currentPick.bonus?.type === "merch_pct" ? "Merch %" : "Upgrade Ticket"}!`
-            : `Drafted ${json.data?.player_name || dialogPlayer?.player_name}!`,
-        });
+            : `Drafted ${json.data?.player_name || dialogPlayer?.player_name}!`
+        );
         setDialogPlayer(null);
         await fetchDraft();
       } else {
-        setMessage({ type: "error", text: json.error || "Failed to draft" });
+        toast.error(json.error ?? "Failed to draft");
       }
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
+      toast.error(err.message ?? "Failed to draft");
     } finally {
       setPicking(false);
     }
@@ -134,7 +133,6 @@ export default function DraftPage() {
 
   const setPickBonus = async (pickId: string, bonus: { type: string; value?: number; tier?: string } | null) => {
     setBonusLoading(pickId);
-    setMessage(null);
     try {
       const res = await fetch("/api/league/game", {
         method: "POST",
@@ -150,10 +148,10 @@ export default function DraftPage() {
       if (json.success) {
         await fetchDraft();
       } else {
-        setMessage({ type: "error", text: json.error || "Failed to set bonus" });
+        toast.error(json.error ?? "Failed to set bonus");
       }
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
+      toast.error(err.message ?? "Failed to set bonus");
     } finally {
       setBonusLoading(null);
     }
@@ -170,26 +168,23 @@ export default function DraftPage() {
   if (!selectedLeagueId) {
     return (
       <div className="p-8">
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            Select a league to view the draft.
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted-foreground">
+          Select a league to view the draft.
+        </div>
       </div>
     );
   }
 
   if (!data?.picks?.length && !data?.league?.draftActive) {
     return (
-      <div className="p-8 space-y-6">
-        <h1 className="text-2xl font-bold">Draft</h1>
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium mb-2">No draft in progress.</p>
-            <p className="text-sm">The host must start the draft from Host Controls. Draft is available from Season 2 onward, during OFFSEASON.</p>
-          </CardContent>
-        </Card>
+      <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
+        <Breadcrumbs />
+        <PageHeader eyebrow="Transfer Hub" title="Draft" />
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted-foreground">
+          <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p className="text-lg font-medium mb-2 text-foreground">No draft in progress.</p>
+          <p className="text-sm">The host must start the draft from Host Controls. Draft is available from Season 2 onward, during OFFSEASON.</p>
+        </div>
       </div>
     );
   }
@@ -206,20 +201,10 @@ export default function DraftPage() {
     : (data.pool || []);
 
   return (
-    <div className="p-8 space-y-8">
-      <h1 className="text-2xl font-bold">Season {data.league?.season || "?"} Draft</h1>
-
-      {message && (
-        <div
-          className={`p-3 rounded text-sm ${
-            message.type === "success"
-              ? "bg-green-900/30 text-green-300 border border-green-800"
-              : "bg-red-900/30 text-red-300 border border-red-800"
-          }`}
-        >
-          {message.text}
-        </div>
-      )}
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
+      <Toaster position="top-center" richColors />
+      <Breadcrumbs />
+      <PageHeader eyebrow="Transfer Hub" title={`Season ${data.league?.season || "?"} Draft`} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -342,7 +327,7 @@ export default function DraftPage() {
                       {p.is_used && p.player_id ? (
                         <p className="font-medium text-sm">Picked</p>
                       ) : p.id === currentPick?.id ? (
-                        <Badge className="bg-blue-600">Current</Badge>
+                        <Badge className="bg-accent">Current</Badge>
                       ) : null}
                     </div>
                   </div>
@@ -382,7 +367,7 @@ export default function DraftPage() {
                     onClick={() => data.isUserTurn && setDialogPlayer(p)}
                   >
                     <div className="flex items-center gap-2">
-                      <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center overflow-hidden">
+                      <div className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center overflow-hidden">
                         {p.image ? (
                           <img src={p.image} alt="" className="w-full h-full object-cover" />
                         ) : (

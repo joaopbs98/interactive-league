@@ -152,19 +152,13 @@ export async function GET(request: NextRequest) {
 
     if (teamCountsErr) {
       console.error("Error fetching team counts:", teamCountsErr);
-      // Continue without team counts rather than failing completely
-      console.log("Continuing without team counts");
     }
-
-    console.log("Team counts:", teamCounts);
 
     // Count teams per league
     const leagueTeamCounts = teamCounts ? teamCounts.reduce((acc, team) => {
       acc[team.league_id] = (acc[team.league_id] || 0) + 1;
       return acc;
     }, {} as Record<string, number>) : {};
-
-    console.log("League team counts:", leagueTeamCounts);
 
     // Process leagues with team information
     const processedLeagues = teamsToUse.map((team: any) => ({
@@ -174,6 +168,7 @@ export async function GET(request: NextRequest) {
       status: team.leagues.status,
       team_count: leagueTeamCounts[team.league_id] || 1, // Default to 1 if count not available
       commissioner_user_id: team.leagues.commissioner_user_id,
+      is_commissioner: team.leagues.commissioner_user_id === session.user.id,
       created_at: team.leagues.created_at,
       my_team: {
         id: team.id,
@@ -183,8 +178,6 @@ export async function GET(request: NextRequest) {
       }
     }));
 
-    console.log("Processed leagues:", processedLeagues);
-    console.log("Successfully fetched user leagues");
     return NextResponse.json({
       success: true,
       leagues: processedLeagues,

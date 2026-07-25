@@ -6,8 +6,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
+  --font-favorit: var(--font-geist-sans);
+  --font-display: var(--font-display);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -24,11 +26,15 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-muted: var(--accent-muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
+  --color-faint-foreground: var(--faint-foreground);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -37,14 +43,22 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-status-positive: var(--status-positive);
+  --color-status-warning: var(--status-warning);
+  --color-status-negative: var(--status-negative);
+  --color-status-neutral: var(--status-neutral);
+  --color-gold: var(--gold);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.25rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -79,37 +93,66 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Resend/Geist-editorial system — see DESIGN.md. True black canvas, translucent-white
+     hairlines instead of shadows, one restrained blue accent, atmospheric glows for depth. */
+  --background: #000000;
+  --foreground: #fcfdff;
+  --card: #0a0a0c;
+  --card-foreground: #fcfdff;
+  --popover: #101012;
+  --popover-foreground: #fcfdff;
+  --surface: #0a0a0c;
+  --surface-2: #101012;
+  --surface-3: #06060a;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --input: #0a0a0c;
+  --muted: #101012;
+  --muted-foreground: rgba(252, 253, 255, 0.7);
+  --faint-foreground: #888e90;
+  --secondary: #101012;
+  --secondary-foreground: #fcfdff;
+
+  /* Primary: the one bright pixel — white CTA fill, black label */
+  --primary: #fcfdff;
+  --primary-foreground: #000000;
+
+  /* Accent: Resend's "link" blue — active nav, links, focus. Never a decorative fill. */
+  --accent: #3b9eff;
+  --accent-hover: #63b3ff;
+  --accent-muted: rgba(59, 158, 255, 0.12);
+  --accent-foreground: #fcfdff;
+
+  /* Status (data only) */
+  --status-positive: #11ff99;
+  --status-warning: #ffc53d;
+  --status-negative: #ff2047;
+  --status-neutral: #a1a4a5;
+  --gold: #ffc53d;
+
+  /* Atmospheric glow washes — low-opacity radial backdrops, never solid fills */
+  --glow-orange: rgba(255, 89, 0, 0.22);
+  --glow-blue: rgba(0, 117, 255, 0.34);
+  --glow-green: rgba(34, 255, 153, 0.18);
+  --glow-red: rgba(255, 32, 71, 0.34);
+
+  --destructive: #ff2047;
+  --ring: #3b9eff;
+  --chart-1: #3b9eff;
+  --chart-2: #11ff99;
+  --chart-3: #ffc53d;
+  --chart-4: #ff2047;
+  --chart-5: #a1a4a5;
+
+  /* Sidebar */
+  --sidebar: #000000;
+  --sidebar-foreground: #fcfdff;
+  --sidebar-primary: #3b9eff;
+  --sidebar-primary-foreground: #fcfdff;
+  --sidebar-accent: rgba(59, 158, 255, 0.12);
+  --sidebar-accent-foreground: #3b9eff;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: #3b9eff;
 }
 
 @layer base {
@@ -129,5 +172,136 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes value-flash {
+  0% {
+    color: var(--accent);
+  }
+  100% {
+    color: inherit;
+  }
+}
+
+@keyframes pack-glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--pack-glow-color, var(--accent-muted));
+  }
+  50% {
+    box-shadow: 0 0 40px 8px var(--pack-glow-color, var(--accent-muted));
+  }
+}
+
+@keyframes pack-burst {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 var(--pack-glow-color, var(--accent-muted));
+  }
+  60% {
+    transform: scale(1.35);
+    opacity: 1;
+    box-shadow: 0 0 120px 40px var(--pack-glow-color, var(--accent-muted));
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+    box-shadow: 0 0 160px 60px transparent;
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-150%) rotate(20deg);
+  }
+  100% {
+    transform: translateX(150%) rotate(20deg);
+  }
+}
+
+@keyframes card-anticipation {
+  0%, 100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  20% {
+    transform: translateX(-3px) rotate(-1deg);
+  }
+  40% {
+    transform: translateX(3px) rotate(1deg);
+  }
+  60% {
+    transform: translateX(-2px) rotate(-0.5deg);
+  }
+  80% {
+    transform: translateX(2px) rotate(0.5deg);
+  }
+}
+
+@layer utilities {
+  /* Atmospheric glow washes (DESIGN.md "Elevation & Depth" level 4) — a single low-opacity
+     radial gradient anchored at the top of a card/section, fading to canvas within ~600px.
+     Never combine two glows in the same container. */
+  .glow-orange {
+    background-image: radial-gradient(ellipse 140% 100% at 50% -20%, var(--glow-orange), transparent 70%);
+  }
+  .glow-blue {
+    background-image: radial-gradient(ellipse 140% 100% at 50% -20%, var(--glow-blue), transparent 70%);
+  }
+  .glow-green {
+    background-image: radial-gradient(ellipse 140% 100% at 50% -20%, var(--glow-green), transparent 70%);
+  }
+  .glow-red {
+    background-image: radial-gradient(ellipse 140% 100% at 50% -20%, var(--glow-red), transparent 70%);
+  }
+
+  /* Editorial serif for hero numbers / page titles — the single loudest element per view */
+  .font-display {
+    font-family: var(--font-display), ui-serif, Georgia, serif;
+  }
+
+  /* Hairline left-edge category bar for table rows / list items */
+  .edge-bar {
+    box-shadow: inset 2px 0 0 0 var(--edge-color, var(--border-strong));
+  }
+
+  /* Brief colour flash for live-updating numbers (balance, rank, etc.) */
+  .value-flash {
+    animation: value-flash 600ms ease-out;
+  }
+
+  /* Standard panel entrance */
+  .panel-in {
+    animation: fadeInUp 240ms ease-out both;
+  }
+
+  /* Pulsing glow for pack-store cards / pack-opening intro */
+  .pack-glow-pulse {
+    animation: pack-glow-pulse 2.4s ease-in-out infinite;
+  }
+
+  /* Pack "explosion" when opened */
+  .pack-burst {
+    animation: pack-burst 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Diagonal light sweep across high-rarity cards */
+  .shimmer-sweep::after {
+    content: "";
+    position: absolute;
+    inset: -50%;
+    background: linear-gradient(
+      75deg,
+      transparent 40%,
+      rgba(255, 255, 255, 0.18) 50%,
+      transparent 60%
+    );
+    animation: shimmer-sweep 2.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  /* Pre-flip "shake" tension for high-rated reveals */
+  .card-anticipation {
+    animation: card-anticipation 0.5s ease-in-out infinite;
   }
 }

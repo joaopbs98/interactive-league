@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +8,12 @@ import { Label } from "@/components/ui/label";
 import { useLeague } from "@/contexts/LeagueContext";
 import { Loader2, Search, UserPlus, Gavel, Trash2, History, ChevronDown, ChevronUp } from "lucide-react";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { PageHeader } from "@/components/PageHeader";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { freeAgentPointsValue } from "@/lib/freeAgentPoints";
 import { getRatingColors } from "@/utils/ratingColors";
 import { Images } from "@/lib/assets";
+import { toast, Toaster } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -74,7 +76,6 @@ export default function FreeAgentsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [signingId, setSigningId] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [bidModal, setBidModal] = useState<FreeAgent | null>(null);
   const [bidSalary, setBidSalary] = useState("");
   const [bidYears, setBidYears] = useState("2");
@@ -129,7 +130,6 @@ export default function FreeAgentsPage() {
   const handlePlaceBid = async () => {
     if (!bidModal || !selectedTeam?.id) return;
     setSigningId(bidModal.player_id);
-    setMessage(null);
     try {
       const res = await fetch("/api/freeagents", {
         method: "POST",
@@ -148,42 +148,14 @@ export default function FreeAgentsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "success", text: "Bid placed! Host will resolve free agency." });
+        toast.success("Bid placed! Host will resolve free agency.");
         setBidModal(null);
         fetchAgents();
       } else {
-        setMessage({ type: "error", text: data.error });
+        toast.error(data.error ?? "Failed to place bid");
       }
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
-    } finally {
-      setSigningId(null);
-    }
-  };
-
-  const handleSign = async (playerId: string) => {
-    setSigningId(playerId);
-    setMessage(null);
-    try {
-      const res = await fetch('/api/freeagents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'sign',
-          leagueId: selectedLeagueId,
-          teamId: selectedTeam?.id,
-          playerId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage({ type: 'success', text: `Signed ${data.data.player_name}!` });
-        fetchAgents();
-      } else {
-        setMessage({ type: 'error', text: data.error });
-      }
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message });
+      toast.error(err.message ?? "Failed to place bid");
     } finally {
       setSigningId(null);
     }
@@ -201,7 +173,6 @@ export default function FreeAgentsPage() {
 
   const handleClearBids = async () => {
     if (!selectedLeagueId || !isHost) return;
-    setMessage(null);
     try {
       const res = await fetch("/api/freeagents", {
         method: "POST",
@@ -210,13 +181,13 @@ export default function FreeAgentsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "success", text: "All pending bids cleared" });
+        toast.success("All pending bids cleared");
         fetchAgents();
       } else {
-        setMessage({ type: "error", text: data.error });
+        toast.error(data.error ?? "Failed to clear bids");
       }
     } catch (err: any) {
-      setMessage({ type: "error", text: err.message });
+      toast.error(err.message ?? "Failed to clear bids");
     }
   };
 
@@ -234,24 +205,23 @@ export default function FreeAgentsPage() {
   }
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Free Agents</h2>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">{agents.length} available</Badge>
-          {isHost && (
-            <Button variant="outline" size="sm" onClick={handleClearBids}>
-              <Trash2 className="h-4 w-4 mr-1" /> CLEAR Bids
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {message && (
-        <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-green-900/30 text-green-300 border border-green-800' : 'bg-red-900/30 text-red-300 border border-red-800'}`}>
-          {message.text}
-        </div>
-      )}
+    <div className="p-6 flex flex-col gap-6 max-w-[1200px] mx-auto">
+      <Toaster position="top-center" richColors />
+      <Breadcrumbs />
+      <PageHeader
+        eyebrow="Transfer Hub"
+        title="Free Agents"
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{agents.length} available</Badge>
+            {isHost && (
+              <Button variant="outline" size="sm" onClick={handleClearBids}>
+                <Trash2 className="h-4 w-4 mr-1" /> Clear Bids
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -259,30 +229,32 @@ export default function FreeAgentsPage() {
           placeholder="Search players..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="pl-10 bg-neutral-800 border-neutral-700"
+          className="pl-10"
         />
       </div>
 
-      {filtered.length === 0 ? (
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-8 text-center text-muted-foreground">
+      <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2">
+          <UserPlus className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Available</h2>
+        </div>
+        {filtered.length === 0 ? (
+          <p className="p-8 text-center text-muted-foreground text-sm">
             {agents.length === 0
               ? "No free agents available. The host must add players to the pool and confirm it in Host Controls."
               : "No players match your search."
             }
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-2">
-          {filtered.map(agent => {
-            const imageSrc = agent.image?.startsWith("http")
-              ? `/api/proxy-image?url=${encodeURIComponent(agent.image)}`
-              : agent.image || Images.NoImage.src;
-            return (
-            <Card key={agent.id} className="bg-neutral-900 border-neutral-800">
-              <CardContent className="p-3 flex items-center justify-between">
+          </p>
+        ) : (
+          <div className="divide-y divide-border">
+            {filtered.map(agent => {
+              const imageSrc = agent.image?.startsWith("http")
+                ? `/api/proxy-image?url=${encodeURIComponent(agent.image)}`
+                : agent.image || Images.NoImage.src;
+              return (
+              <div key={agent.id} className="flex items-center justify-between px-5 py-3 hover:bg-surface-2 transition-colors duration-150">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center overflow-hidden shrink-0">
                     <img
                       src={imageSrc}
                       alt=""
@@ -318,53 +290,50 @@ export default function FreeAgentsPage() {
                     <><UserPlus className="h-3 w-3 mr-1" /> Place Bid</>
                   )}
                 </Button>
-              </CardContent>
-            </Card>
-          );})}
-        </div>
-      )}
+              </div>
+            );})}
+          </div>
+        )}
+      </section>
 
       {history.length > 0 && (
-        <Card className="bg-neutral-900 border-neutral-800">
-          <CardContent className="p-0">
-            <button
-              type="button"
-              className="w-full p-4 flex items-center justify-between hover:bg-neutral-800/50 transition-colors"
-              onClick={() => setHistoryOpen(!historyOpen)}
-            >
-              <span className="font-medium flex items-center gap-2">
-                <History className="h-4 w-4" /> FA History
-              </span>
-              {historyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-            {historyOpen && (
-              <div className="border-t border-neutral-800 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-neutral-800 text-muted-foreground text-left">
-                      <th className="p-3">Player</th>
-                      <th className="p-3">Winner</th>
-                      <th className="p-3">Salary</th>
-                      <th className="p-3">Years</th>
-                      <th className="p-3">Date</th>
+        <section className="panel-in rounded-lg border border-border bg-surface overflow-hidden">
+          <button
+            type="button"
+            className="w-full flex items-center gap-2 px-5 py-3 border-b border-border bg-surface-2 hover:bg-surface-3 transition-colors duration-150"
+            onClick={() => setHistoryOpen(!historyOpen)}
+          >
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">FA History</h2>
+            {historyOpen ? <ChevronUp className="h-4 w-4 ml-auto" /> : <ChevronDown className="h-4 w-4 ml-auto" />}
+          </button>
+          {historyOpen && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground text-left">
+                    <th className="p-3">Player</th>
+                    <th className="p-3">Winner</th>
+                    <th className="p-3">Salary</th>
+                    <th className="p-3">Years</th>
+                    <th className="p-3">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((h, i) => (
+                    <tr key={i} className="border-b border-border/50">
+                      <td className="p-3">{h.player_name}</td>
+                      <td className="p-3">{h.winner_team} {h.winner_acronym && `(${h.winner_acronym})`}</td>
+                      <td className="p-3 tabular-nums">${(h.salary / 1_000_000).toFixed(1)}M</td>
+                      <td className="p-3">{h.years}</td>
+                      <td className="p-3 text-muted-foreground">{new Date(h.resolved_at).toLocaleDateString()}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((h, i) => (
-                      <tr key={i} className="border-b border-neutral-800/50">
-                        <td className="p-3">{h.player_name}</td>
-                        <td className="p-3">{h.winner_team} {h.winner_acronym && `(${h.winner_acronym})`}</td>
-                        <td className="p-3">${(h.salary / 1_000_000).toFixed(1)}M</td>
-                        <td className="p-3">{h.years}</td>
-                        <td className="p-3 text-muted-foreground">{new Date(h.resolved_at).toLocaleDateString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
 
       <Dialog open={!!bidModal} onOpenChange={(open) => !open && setBidModal(null)}>

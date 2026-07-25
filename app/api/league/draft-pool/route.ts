@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { isLeagueHost } from "@/lib/hostUtils";
+import { visiblePlayerScope } from "@/lib/playerScopeRules.mjs";
 
 async function getServiceSupabase() {
   return createServiceClient(
@@ -44,6 +45,8 @@ export async function GET(request: NextRequest) {
       let q = serviceSupabase
         .from("player")
         .select("player_id, name, full_name, positions, overall_rating")
+        .or(visiblePlayerScope(leagueId))
+        .not("player_id", "like", "custom_%")
         .order("overall_rating", { ascending: false })
         .limit(50);
       if (search.trim()) {
@@ -92,6 +95,72 @@ export async function GET(request: NextRequest) {
   }
 }
 
+type ServiceClient = Awaited<ReturnType<typeof getServiceSupabase>>;
+
+/** Shared by the "add" and "auto" actions: ensures the player exists as an unassigned
+ * league_players row, then adds them to the draft pool. Returns an error string on
+ * failure so callers can decide whether to abort (manual add) or just skip (auto-fill,
+ * where one bad candidate shouldn't sink the whole balanced-pool generation). */
+async function addPlayerToPool(
+  serviceSupabase: ServiceClient,
+  leagueId: string,
+  season: number,
+  playerId: string,
+  addedByUserId: string
+): Promise<string | null> {
+  const { data: p } = await serviceSupabase
+    .from("player")
+    .select("player_id, name, full_name, image, description, positions, overall_rating")
+    .or(visiblePlayerScope(leagueId))
+    .not("player_id", "like", "custom_%")
+    .eq("player_id", playerId)
+    .single();
+
+  if (!p) {
+    return `Player ${playerId} not found in global DB`;
+  }
+
+  const { data: existing } = await serviceSupabase
+    .from("league_players")
+    .select("id, team_id")
+    .eq("league_id", leagueId)
+    .eq("player_id", playerId)
+    .single();
+
+  if (!existing) {
+    const { error: insErr } = await serviceSupabase.from("league_players").upsert(
+      {
+        league_id: leagueId,
+        player_id: p.player_id,
+        player_name: p.name ?? p.player_id,
+        full_name: p.full_name,
+        image: p.image,
+        description: p.description,
+        positions: p.positions ?? "ST",
+        rating: p.overall_rating ?? 50,
+        team_id: null,
+      },
+      { onConflict: "league_id,player_id", ignoreDuplicates: true }
+    );
+    if (insErr) {
+      return `Failed to add player: ${insErr.message}`;
+    }
+  } else if (existing.team_id) {
+    return `Player ${playerId} is already on a team`;
+  }
+
+  await serviceSupabase.from("draft_pool").upsert(
+    {
+      league_id: leagueId,
+      season,
+      player_id: playerId,
+      added_by_host: addedByUserId,
+    },
+    { onConflict: "league_id,season,player_id" }
+  );
+  return null;
+}
+
 /** POST: Add/remove players from draft pool. Host only. */
 export async function POST(request: NextRequest) {
   try {
@@ -128,56 +197,33 @@ export async function POST(request: NextRequest) {
       }
 
       for (const playerId of ids) {
-        const { data: p } = await serviceSupabase
-          .from("player")
-          .select("player_id, name, full_name, image, description, positions, overall_rating")
-          .eq("player_id", playerId)
-          .single();
-
-        if (!p) {
-          return NextResponse.json({ error: `Player ${playerId} not found in global DB` }, { status: 400 });
+        const err = await addPlayerToPool(serviceSupabase, leagueId, season, playerId, user.id);
+        if (err) {
+          return NextResponse.json({ error: err }, { status: 400 });
         }
-
-        const { data: existing } = await serviceSupabase
-          .from("league_players")
-          .select("id, team_id")
-          .eq("league_id", leagueId)
-          .eq("player_id", playerId)
-          .single();
-
-        if (!existing) {
-          const { error: insErr } = await serviceSupabase.from("league_players").upsert(
-            {
-              league_id: leagueId,
-              player_id: p.player_id,
-              player_name: p.name ?? p.player_id,
-              full_name: p.full_name,
-              image: p.image,
-              description: p.description,
-              positions: p.positions ?? "ST",
-              rating: p.overall_rating ?? 50,
-              team_id: null,
-            },
-            { onConflict: "league_id,player_id", ignoreDuplicates: true }
-          );
-          if (insErr) {
-            return NextResponse.json({ error: `Failed to add player: ${insErr.message}` }, { status: 500 });
-          }
-        } else if (existing.team_id) {
-          return NextResponse.json({ error: `Player ${playerId} is already on a team` }, { status: 400 });
-        }
-
-        await serviceSupabase.from("draft_pool").upsert(
-          {
-            league_id: leagueId,
-            season,
-            player_id: playerId,
-            added_by_host: user.id,
-          },
-          { onConflict: "league_id,season,player_id" }
-        );
       }
       return NextResponse.json({ success: true, message: `Added ${ids.length} player(s) to draft pool` });
+    }
+
+    // Auto-generate a balanced pool sized to the league (team_count players), rated to
+    // this season's Basic-Prime pack band, with 1 per required position where available.
+    // Fixes the prior "host manually searches and adds whoever" flow producing wildly
+    // unbalanced pools (e.g. Ronaldo/Mbappe-tier players in a season-2 draft).
+    if (action === "auto") {
+      const { data: candidates, error: rpcErr } = await serviceSupabase.rpc(
+        "select_balanced_draft_players",
+        { p_league_id: leagueId }
+      );
+      if (rpcErr) {
+        return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+      }
+      const ids = (candidates || []).map((c: { player_id: string }) => c.player_id);
+      let added = 0;
+      for (const playerId of ids) {
+        const err = await addPlayerToPool(serviceSupabase, leagueId, season, playerId, user.id);
+        if (!err) added++;
+      }
+      return NextResponse.json({ success: true, message: `Generated a balanced pool of ${added} player(s)` });
     }
 
     if (action === "remove") {
